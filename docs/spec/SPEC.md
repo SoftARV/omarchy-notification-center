@@ -327,12 +327,12 @@ The initiative is done when all of the following hold on a live shell:
 
 ## Open Questions
 
-1. **Should a user-set duration be a floor or a hard override?** Upstream takes
-   `max(configured, app-requested)` and clamps to 30s, so an app asking for 25s
-   gets 25s even if the user set 8s. `SPEC-timing.md` preserves those semantics
-   with the user's number substituted, which is the conservative choice. If you
-   want your setting to win outright over what the app asked for, that is a
-   one-line change plus a knob — say so and I will spec it in.
+1. ~~**Should a user-set duration be a floor or a hard override?**~~ **Resolved
+   2026-08-28: override.** The user's duration wins and the app's `expireTimeout`
+   is ignored, because "control the time a notification appears" is defeated by
+   an app that can overrule it. Every sender observed on the development machine
+   requests no timeout at all, so the two rules are indistinguishable in practice.
+   Consequence: `maxPopupDurationMs` is now vestigial — see `SPEC-timing.md`.
 2. **What should `showHistory` do now that a center exists?** Today it replays
    history as toasts. With `historyLimit` at 100 that would be absurd, so
    `popup-cap` bounds the replay automatically and the behavior stays. The

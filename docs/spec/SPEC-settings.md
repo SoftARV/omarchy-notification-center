@@ -54,7 +54,7 @@ hand-edited file into a setting the user never chose and cannot see.
 | Field | Range | Out of range | Invalid type |
 |---|---|---|---|
 | `popupDurationMs.*` | 0, or 500–300000 | nearest bound | that urgency's default |
-| `maxPopupDurationMs` | 1000–300000 | nearest bound | 30000 |
+| `maxPopupDurationMs` | 1000–300000 | nearest bound | 30000 | *(vestigial — see `SPEC-timing.md`)* |
 | `maxVisiblePopups` | 1–20 | nearest bound | 4 |
 | `groupByApp` | boolean | — | true |
 | `historyLimit` | 1–500 | nearest bound | 100 |
