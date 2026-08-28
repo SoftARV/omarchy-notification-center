@@ -277,3 +277,14 @@ function hasUnreadIn(fileNames, lastSeen) {
   }
   return false
 }
+
+// Every field a history row carries. The IPC serialiser copies role by role, so
+// this list drifting from what historyRows produces would drop fields silently.
+var HISTORY_ROLES = [
+  "id", "originalId", "app", "appIcon", "summary", "body",
+  "image", "glyph", "execArgv", "urgency", "expireTimeout", "timestamp"
+]
+
+function historyRoles() {
+  return HISTORY_ROLES.slice()
+}

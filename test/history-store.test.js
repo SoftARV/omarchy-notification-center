@@ -146,3 +146,29 @@ test("hasUnreadIn short-circuits on the first newer file", function() {
   assert.strictEqual(policy.hasUnreadIn(names, 100), true)
   assert.ok(Date.now() - t0 < 50, "should not scan the whole list")
 })
+
+// ---------------------------------------------------------------- roles
+
+// The IPC serialiser copies rows role by role. If that list and what
+// historyRows produces ever diverge, entries lose fields silently -- an image
+// or an execArgv going missing with nothing to notice it.
+test("historyRoles names exactly the fields historyRows produces", function() {
+  var produced = Object.keys(logic.historyRows(entry({}), [], NORMAL, 10)[0]).sort()
+  assert.deepStrictEqual(policy.historyRoles().slice().sort(), produced)
+})
+
+test("historyRoles covers every role the card draws", function() {
+  var roles = policy.historyRoles()
+  logic.popupRoles().forEach(function(role) {
+    assert.ok(roles.indexOf(role) !== -1, "card role missing from historyRoles: " + role)
+  })
+  ;["id", "originalId", "timestamp"].forEach(function(role) {
+    assert.ok(roles.indexOf(role) !== -1, "identity role missing: " + role)
+  })
+})
+
+test("historyRoles hands out a fresh array", function() {
+  var a = policy.historyRoles()
+  a.push("tampered")
+  assert.strictEqual(policy.historyRoles().indexOf("tampered"), -1)
+})

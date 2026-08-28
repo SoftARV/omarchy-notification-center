@@ -64,7 +64,7 @@ indicator exists to report.
 
 ---
 
-## Task 2: The model, and `notification-history list`
+## Task 2: The model, and `notification-history list`  [DONE]
 
 **Description:** Give the sidecar its own `Process` reading the history
 directory, a `ListModel` it populates, and an IPC target to see the result. The
@@ -74,29 +74,53 @@ Reading outside `popupFileQueue` is deliberate: that queue's `Process` has no
 stdout collector and physically cannot carry a read.
 
 **Acceptance criteria:**
-- [ ] `forkState.historyModel` is an empty `ListModel` until `loadHistory()` is called
-- [ ] `loadHistory()` populates it newest-first from the history directory
-- [ ] An empty directory yields an empty model and no error in the shell log
-- [ ] A truncated file in the directory does not stop the rest loading
-- [ ] `notification-history list` returns the model as JSON
-- [ ] Two `loadHistory()` calls in flight at once do not double-populate
-- [ ] Reading does not block the UI: notifications still appear during a load
+- [x] ~~`forkState.historyModel` is empty until `loadHistory()` is called~~ — **changed**: loaded once at startup, see below
+- [x] `loadHistory()` populates it newest-first from the history directory
+- [x] An empty directory yields an empty model and no error in the shell log
+- [x] A truncated file in the directory does not stop the rest loading
+- [x] `notification-history list` returns the model as JSON
+- [x] Two `loadHistory()` calls in flight at once do not double-populate
+- [x] Reading does not block the UI: notifications still appear during a load
 
 **Verification:**
-- [ ] `./install.sh && omarchy restart shell`
-- [ ] `notify-send a; notify-send b`, let them expire, then `notification-history list` → both, newest first
-- [ ] `printf 'garbage' > ~/.local/state/omarchy/notifications/history/bad.json`; list again → the good entries still appear
-- [ ] Empty the directory, `list` → `[]`, no error
-- [ ] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
-- [ ] `./scripts/check-delta.sh` → unchanged; this task adds no `Service.qml` hook
+- [x] `./install.sh && omarchy restart shell`
+- [x] `notify-send a; notify-send b`, let them expire, then `notification-history list` → both, newest first
+- [x] `printf 'garbage' > ~/.local/state/omarchy/notifications/history/bad.json`; list again → the good entries still appear
+- [x] Empty the directory, `list` → `[]`, no error
+- [x] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
+- [x] `./scripts/check-delta.sh` → unchanged; this task adds no `Service.qml` hook
 
 **Dependencies:** Task 1
 
-**Files likely touched:**
-- `NotificationState.qml`
-- `test/history-store.test.js`
+**Files touched:**
+- `NotificationState.qml` (model, read `Process`, `notification-history` target)
+- `NotificationPolicy.js` (`historyRoles`)
+- `test/history-store.test.js` (3 more tests)
+- `docs/spec/SPEC-history-store.md` (lazy → warm, see below)
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** S (4 files). No `Service.qml` change; the guard reads
+`+23/60`, unmoved.
+
+**The spec's "lazy" read had to go.** A read is a subprocess and IPC cannot wait
+on one, so a lazily-loaded model returns empty on its first query — `list` would
+have needed calling twice to see anything. The stated reason for lazy was
+memory, and a hundred entries is roughly 50 KB. The model is now loaded once at
+startup and refreshed on demand, which also means `center-ui` will open with
+content instead of flickering through an empty panel. `list` returns the last
+completed read and starts a fresh one, so a query right after a write can be one
+behind; the revision counter in Task 3 closes that.
+
+**A drift guard rather than a convenience.** `historyRoles()` exists because the
+IPC serialiser copies rows role by role, and a list that fell out of step with
+what `historyRows` produces would drop an image or an `execArgv` with nothing to
+notice. A test asserts the two match exactly.
+
+**Verified against real data**, including the destructive cases, with the history
+directory backed up to `/tmp/history.backup` first: 10 real entries listed
+newest-first straight after a restart; a hand-written torn file skipped while all
+10 survived; the directory emptied → `[]` with no error, then restored; five
+overlapping reloads left 10 entries and 10 unique timestamps; a toast still
+appeared while three reads were in flight.
 
 ---
 
@@ -185,11 +209,35 @@ interpretation. No string is ever built and handed to a shell.
 
 **Dependencies:** Task 3
 
-**Files likely touched:**
-- `NotificationState.qml`
-- `test/history-store.test.js`
+**Files touched:**
+- `NotificationState.qml` (model, read `Process`, `notification-history` target)
+- `NotificationPolicy.js` (`historyRoles`)
+- `test/history-store.test.js` (3 more tests)
+- `docs/spec/SPEC-history-store.md` (lazy → warm, see below)
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** S (4 files). No `Service.qml` change; the guard reads
+`+23/60`, unmoved.
+
+**The spec's "lazy" read had to go.** A read is a subprocess and IPC cannot wait
+on one, so a lazily-loaded model returns empty on its first query — `list` would
+have needed calling twice to see anything. The stated reason for lazy was
+memory, and a hundred entries is roughly 50 KB. The model is now loaded once at
+startup and refreshed on demand, which also means `center-ui` will open with
+content instead of flickering through an empty panel. `list` returns the last
+completed read and starts a fresh one, so a query right after a write can be one
+behind; the revision counter in Task 3 closes that.
+
+**A drift guard rather than a convenience.** `historyRoles()` exists because the
+IPC serialiser copies rows role by role, and a list that fell out of step with
+what `historyRows` produces would drop an image or an `execArgv` with nothing to
+notice. A test asserts the two match exactly.
+
+**Verified against real data**, including the destructive cases, with the history
+directory backed up to `/tmp/history.backup` first: 10 real entries listed
+newest-first straight after a restart; a hand-written torn file skipped while all
+10 survived; the directory emptied → `[]` with no error, then restored; five
+overlapping reloads left 10 entries and 10 unique timestamps; a toast still
+appeared while three reads were in flight.
 
 ---
 

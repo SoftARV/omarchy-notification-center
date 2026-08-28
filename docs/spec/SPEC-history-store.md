@@ -47,10 +47,16 @@ entry is written with `printf`, which is not, so a concurrent read may see a
 torn file — and invalid entries are skipped by design. Any write bumps
 `historyRevision`, so a reader re-reads once the write has finished.
 
-The read is **lazy and on demand**: the model is empty until something asks. A
-service holding a hundred parsed entries for a panel nobody opened is wasted
-memory. `forkState.loadHistory()` triggers it; `center-ui` calls it when the
-panel opens.
+The model is **loaded once at startup and refreshed on demand**, not lazily.
+The lazy design was chosen to save memory, and the memory is negligible — a
+hundred entries is roughly 50 KB. Keeping it warm means `center-ui` opens with
+content rather than flickering through an empty panel, and it makes the IPC
+usable: a read is a subprocess, and IPC cannot wait on one, so a lazily-loaded
+model would return empty on its first query.
+
+`forkState.loadHistory()` refreshes it; `center-ui` calls it when the panel
+opens, and the revision counter drives it otherwise. `list` returns the last
+completed read, so a query issued immediately after a write may be one behind.
 
 ### Change notification without a file watcher
 
