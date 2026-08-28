@@ -8,10 +8,16 @@ Upstream lives at `/usr/share/omarchy/shell/plugins/notifications`.
 
 ## What differs from upstream
 
+Currently tracking **omarchy 4.0.1-1**. The whole fork is seven lines:
+
 | File | Change |
 | --- | --- |
 | `manifest.json` | id `nec.notifications`, name "My Notifications", `omarchy.clonedFrom` |
-| `Service.qml` | toast column anchored to `horizontalCenter` instead of `right` |
+| `Service.qml` | popup column, layout alignment and card anchored to `horizontalCenter` instead of `right`; the bar's right margin is dropped |
+
+`NotificationLogic.js` and `components/NotificationCard.qml` are byte-identical
+to upstream. Keeping it that way is the point: the smaller the delta, the more
+often an upstream merge lands without a conflict.
 
 ## Install
 
@@ -37,9 +43,33 @@ the code but keeps the live service instance.
 
 ## Tracking upstream
 
-Omarchy ships updates to the stock plugin, and this fork does not pick them up
-automatically. To see what has moved:
+The `upstream` branch carries pristine snapshots of
+`/usr/share/omarchy/shell/plugins/notifications` and nothing else — no fork
+edits ever land on it. That gives a real three-way base, so picking up an
+omarchy release is a merge rather than a re-application by hand.
+
+Its root commit is a reconstruction of the fork point (see that commit message
+for what pins each file); every commit after it is a verbatim vendor drop.
+
+To pick up a new omarchy release:
 
 ```sh
-diff -ru /usr/share/omarchy/shell/plugins/notifications .
+git checkout upstream
+cp -r /usr/share/omarchy/shell/plugins/notifications/. .
+git commit -am "Vendor omarchy.notifications from omarchy <version>"
+
+git checkout main
+git merge upstream
 ```
+
+Then check the delta is still only the fork's own lines, and that the result
+lints no worse than upstream does:
+
+```sh
+git diff upstream -- Service.qml NotificationLogic.js manifest.json components/
+/usr/lib/qt6/bin/qmllint Service.qml
+```
+
+`qmllint` cannot resolve the `qs.*` imports outside the shell, so it reports
+unqualified-access and uncreatable-type warnings on upstream's own files too.
+Compare against upstream rather than expecting silence.
