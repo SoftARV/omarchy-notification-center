@@ -79,7 +79,7 @@ the behaviour is a stopwatch on a live shell.
 - [x] `notify-send -t 25000` yields the user's duration, not 25s
 - [x] `notify-send -u critical` never auto-dismisses at default settings
 - [x] Default settings behave exactly as before this module: 5s low, 8s normal, critical sticky
-- [ ] Hovering a toast still pauses its countdown — **not verifiable from here**; needs a pointer on the screen. The `ticking` binding and `HoverHandler` are upstream's and unmodified, but that is an argument, not a check
+- [x] Hovering a toast still pauses its countdown — confirmed by the user, 2026-08-28: with three 25 s toasts on screen, the hovered one stayed while the other two expired
 - [x] `check-delta.sh` stays within budget
 
 **Verification:**
@@ -88,7 +88,7 @@ the behaviour is a stopwatch on a live shell.
 - [x] `setDuration normal 0`, send one, wait 60s → still there; dismiss by hand
 - [x] `notify-send -u critical`, wait 60s → still there
 - [x] Reset to defaults, send one, confirm ~8s
-- [ ] Hover a toast mid-countdown → it stops shrinking; unhover → it resumes — **left for a human**
+- [x] Hover a toast mid-countdown → it stops shrinking; unhover → it resumes — confirmed by the user
 - [x] **Live-change behaviour:** send a toast, change the duration while it is on
       screen, and record what actually happens to it. Update `SPEC-timing.md`'s
       "Live changes" section from the observation, whichever way it goes
@@ -128,15 +128,17 @@ previous toast's tail. Re-measured cleanly: 5.0s, urgency 0.
 
 ## Checkpoint: Module complete  [REACHED]
 
-- [x] Every acceptance criterion in `docs/spec/SPEC-timing.md` is met, except the hover check noted above
+- [x] Every acceptance criterion in `docs/spec/SPEC-timing.md` is met
 - [x] `node --test "test/**/*.test.js"` passes — 89 tests
 - [x] `./scripts/check-delta.sh` passes at `+23/60`
 - [x] `qmllint` reports warning categories identical to upstream's own file
 - [x] `git merge upstream` is a no-op
 - [x] Notifications, DND and history all still work on a live shell
 - [x] The "Live changes" section of the spec matches observed behaviour
-- [ ] **For you:** hover a toast mid-countdown and confirm it pauses
-- [ ] Ready for review; `stacking` and `history-store` remain unblocked
+- [x] Hover-pause confirmed by the user on three simultaneous 25 s toasts: the
+      hovered one held while the other two expired, so the pause is per-card and
+      the duration is applied consistently across a stack
+- [x] Reviewed and approved by the user, 2026-08-28; `stacking` and `history-store` remain unblocked
 
 **timing is complete.** The first of the five original asks is real behaviour:
 `setDuration` changes how long a toast stays on screen.
