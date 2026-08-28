@@ -45,14 +45,24 @@ sees no behavior change except the new cap and grouping — which are the point.
 Every field is clamped, never rejected. A corrupt file must not cost the user
 their notifications.
 
-| Field | Range | On invalid |
-|---|---|---|
-| `popupDurationMs.*` | 0 or 500–300000 | that urgency's default |
-| `maxPopupDurationMs` | 1000–300000 | 30000 |
-| `maxVisiblePopups` | 1–20 | 4 |
-| `groupByApp` | boolean | true |
-| `historyLimit` | 1–500 | 100 |
-| `historyLastSeen` | finite ≥ 0 | 0 |
+**Out of range is not the same as invalid.** A number past a bound is a value
+the user meant — 9999 visible popups is an ambition, not a typo — so it clamps
+to the bound. A string, a `NaN` or an `Infinity` is not a value at all, so it
+falls back to the default. Collapsing the two would turn one bad character in a
+hand-edited file into a setting the user never chose and cannot see.
+
+| Field | Range | Out of range | Invalid type |
+|---|---|---|---|
+| `popupDurationMs.*` | 0, or 500–300000 | nearest bound | that urgency's default |
+| `maxPopupDurationMs` | 1000–300000 | nearest bound | 30000 |
+| `maxVisiblePopups` | 1–20 | nearest bound | 4 |
+| `groupByApp` | boolean | — | true |
+| `historyLimit` | 1–500 | nearest bound | 100 |
+| `historyLastSeen` | finite ≥ 0 | 0 | 0 |
+
+`0` is the sentinel for "never auto-dismiss" and nothing rounds into it: a 1 ms
+duration is a mistake, and reading it as "never" would be the opposite of what
+was asked. It clamps up to 500.
 
 A whole-file parse failure logs one warning and yields defaults, matching
 upstream's `parseSettings` behavior.
@@ -71,6 +81,13 @@ rest, which is the only compatibility that matters.
   `clampSettings(obj)`, `serializeSettings(obj)`. Pure, fully unit-tested.
   Upstream's `NotificationLogic.parseSettings` is left untouched and unused by
   the fork path.
+
+  `parseSettings` returns `{ error, errorMessage, settings, needsRewrite }`.
+  `needsRewrite` answers "does the file on disk differ from what we would write
+  now", which covers a v3 document, a legacy payload, an out-of-range value and
+  a whitespace edit in one comparison. It is derived from the serialized form
+  rather than from a version number, so an already-canonical file is never
+  rewritten on startup.
 - **`NotificationState.qml`** — a QtObject mounted in `Service.qml` (hook 2)
   holding `property var settings`, a `settingsChanged` signal, and the setter
   functions. It reuses the service's existing `FileView`, save timer and

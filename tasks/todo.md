@@ -11,7 +11,7 @@ scope `settings`).
 
 ## Phase 1: The schema
 
-## Task 1: NotificationPolicy.js — defaults, clamping, parse, serialize
+## Task 1: NotificationPolicy.js — defaults, clamping, parse, serialize  [DONE]
 
 **Description:** The first sidecar file. Everything about the settings schema
 that can be decided without a shell: what the defaults are, what each field's
@@ -24,27 +24,41 @@ rest of the file still loads — a corrupt settings file must not cost the user
 their notifications.
 
 **Acceptance criteria:**
-- [ ] `defaultSettings()` returns every key in the v4 schema, with upstream's current constants as values (`low: 5000`, `normal: 8000`, `critical: 0`, `maxPopupDurationMs: 30000`, `maxVisiblePopups: 4`, `groupByApp: true`, `historyLimit: 100`, `historyLastSeen: 0`)
-- [ ] `clampSettings(obj)` returns a complete object for any input at all — `null`, `{}`, an array, a string, wrong-typed fields — never missing a key
-- [ ] Every field clamps to the ranges in the spec's table; out-of-range values fall back to that field's default, not to zero
-- [ ] `parseSettings(raw)` migrates v3 (and the legacy `pending`/`past`/`entries` shapes) by keeping `dnd` and defaulting everything else
-- [ ] Invalid JSON yields full defaults and reports the error once, without throwing
-- [ ] `serializeSettings(obj)` round-trips: `parseSettings(serializeSettings(x))` deep-equals `clampSettings(x)`
-- [ ] Output is stable — same input, byte-identical output — so an unchanged settings object never produces a spurious file write
+- [x] `defaultSettings()` returns every key in the v4 schema, with upstream's current constants as values (`low: 5000`, `normal: 8000`, `critical: 0`, `maxPopupDurationMs: 30000`, `maxVisiblePopups: 4`, `groupByApp: true`, `historyLimit: 100`, `historyLastSeen: 0`)
+- [x] `clampSettings(obj)` returns a complete object for any input at all — `null`, `{}`, an array, a string, wrong-typed fields — never missing a key
+- [x] Every field clamps to the ranges in the spec's table; out-of-range values fall back to that field's default, not to zero
+- [x] `parseSettings(raw)` migrates v3 (and the legacy `pending`/`past`/`entries` shapes) by keeping `dnd` and defaulting everything else
+- [x] Invalid JSON yields full defaults and reports the error once, without throwing
+- [x] `serializeSettings(obj)` round-trips: `parseSettings(serializeSettings(x))` deep-equals `clampSettings(x)`
+- [x] Output is stable — same input, byte-identical output — so an unchanged settings object never produces a spurious file write
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → all pass, including the new `test/settings.test.js`
-- [ ] Tests cover the real v3 file's exact contents (`{"version":3,"dnd":false}`) as a migration fixture
-- [ ] Tests cover the spec's hostile example: `{"version":4,"maxVisiblePopups":9999,"groupByApp":"yes","historyLimit":-1}` → 20 / true / 1
-- [ ] `./scripts/check-delta.sh` → still passes (this task adds a sidecar, touching no upstream file)
+- [x] `node --test "test/**/*.test.js"` → all pass, including the new `test/settings.test.js`
+- [x] Tests cover the real v3 file's exact contents (`{"version":3,"dnd":false}`) as a migration fixture
+- [x] Tests cover the spec's hostile example: `{"version":4,"maxVisiblePopups":9999,"groupByApp":"yes","historyLimit":-1}` → 20 / true / 1
+- [x] `./scripts/check-delta.sh` → still passes (this task adds a sidecar, touching no upstream file)
 
 **Dependencies:** None
 
-**Files likely touched:**
-- `NotificationPolicy.js` (new)
-- `test/settings.test.js` (new)
+**Files touched:**
+- `NotificationPolicy.js` (new — the fork's first sidecar)
+- `test/settings.test.js` (new — 24 tests)
+- `docs/spec/SPEC-settings.md` (clamp table clarified, see below)
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** S (3 files)
+
+**Spec conflict found and resolved.** The clamp table said out-of-range values
+fall back to the default, but the acceptance example said
+`maxVisiblePopups: 9999` → 20 and `historyLimit: -1` → 1, which is clamping to
+the bound. Resolved by separating the two cases: a number past a bound is a
+value the user meant, so it clamps; a string or `NaN` is not a value at all, so
+it falls back. The table now has a column for each, and `0`'s "never
+auto-dismiss" sentinel is documented as unreachable by rounding.
+
+**Verified against the real file**, not only fixtures: the live
+`{"version":3,"dnd":false}` migrates to v4 with `dnd` intact, and a second load
+of the result reports `needsRewrite: false` — proving the file will not be
+rewritten on every startup.
 
 ---
 
