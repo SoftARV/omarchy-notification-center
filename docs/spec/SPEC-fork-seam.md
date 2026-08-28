@@ -98,7 +98,7 @@ hook inventory as the source of truth, and the merge procedure amended to run
 sentence becomes a statement about *hooks* rather than lines, since it will no
 longer be literally true.
 
-`docs/adr/0001-sidecar-seam.md` records the decision and the alternative that
+[`docs/adr/0001-sidecar-seam.md`](../adr/0001-sidecar-seam.md) records the decision and the alternative that
 was rejected (a separate companion plugin), so the next reader does not
 re-litigate it. It is this module's job to create `docs/adr/`; `docs/spec/`
 already exists.
@@ -126,7 +126,7 @@ project plan.
   Definition of Done depends on this command working, so the scaffold is this
   module's to build -- putting it in `settings` would make that module carry
   test infrastructure unrelated to settings.
-- `docs/adr/0001-sidecar-seam.md` records the decision and the rejected
+- [`docs/adr/0001-sidecar-seam.md`](../adr/0001-sidecar-seam.md) records the decision and the rejected
   alternative.
 - Re-running `git merge upstream` against the already-merged omarchy 4.0.1 drop
   is a no-op.
