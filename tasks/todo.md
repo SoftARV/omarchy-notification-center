@@ -139,7 +139,7 @@ throughout. DND round-tripped on → restart → on → off → restart → off.
 - [x] A corrupt file does not stop notifications from working — one warning, defaults, toasts fine
 - [x] Restarting twice does not rewrite the file the second time (mtime unchanged)
 - [x] `node --test "test/**/*.test.js"` (65) and `./scripts/check-delta.sh` (+26/60) pass
-- [ ] Review with human before proceeding
+- [x] Reviewed and approved by the user, 2026-08-28
 
 ---
 
@@ -218,7 +218,7 @@ exactly one `MOVED_TO` — one atomic write, as specified.
 - [x] `./install.sh` ships the new sidecar files and nothing from `test/ docs/ scripts/ tasks/`
 - [x] Notifications, DND and history all still work on a live shell
 - [x] Settings reset to defaults after testing, so no test value was left behind
-- [ ] Ready for review; `timing`, `stacking` and `history-store` are unblocked
+- [x] Reviewed and approved by the user, 2026-08-28; `timing`, `stacking` and `history-store` are unblocked
 
 **settings is complete.** The four knobs persist, clamp, survive a restart, and
 are reachable from the shell. Nothing reads them yet — `timing` is next and
