@@ -33,6 +33,12 @@ Item {
     }
   }
 
+  // How long a toast of this urgency stays on screen. The enum is passed down
+  // because NotificationUrgency is a QML type the policy cannot import.
+  function durationFor(urgency, urgencyEnum) {
+    return Policy.durationFor(urgency, root.settings, urgencyEnum)
+  }
+
   // Change one setting. False means the value was unusable and nothing moved.
   // The save is debounced by Service.qml, so a slider drag writes once.
   function applySetting(key, value) {

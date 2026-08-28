@@ -134,6 +134,11 @@ omarchy-notification-send --exec '["notify-send","from history"]' "clickable" "b
   and `rescanPlugins` can reload one without the other. Every binding must
   survive a null `state`; this is the most likely source of a console-error
   cascade.
+- **The duration slider can yank toasts off screen.** A live duration change
+  re-evaluates the lifetime of toasts already showing (measured in `timing`), and
+  `applySetting` reassigns `settings` on every call while only the file write is
+  debounced. Dragging from 20 s to 3 s would shrink every visible toast as you
+  drag. Fix at the slider: commit on release, or debounce the setter call itself.
 - **Panel sizing with 100 entries.** The list must be virtualized (a `ListView`,
   not a `Repeater` in a `Column`) or the panel builds a hundred cards to show
   eight. This is what the 200ms criterion is testing.

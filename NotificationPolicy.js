@@ -220,3 +220,33 @@ function withSetting(settings, key, rawValue) {
   next[key] = n
   return clampSettings(next)
 }
+
+// ------------------------------------------------------------ toast lifetime
+
+// The freedesktop urgency levels, used only when the caller cannot supply
+// Quickshell's enum. Without them a critical would fall through to normal and
+// start auto-dismissing, which is the worst way for this to fail.
+var FREEDESKTOP_URGENCY = { Low: 0, Normal: 1, Critical: 2 }
+
+// Mirrors upstream's switch: Critical and Low are named, everything else --
+// Normal included -- goes down the default branch.
+function urgencyName(urgency, urgencyEnum) {
+  var levels = urgencyEnum && urgencyEnum.Critical !== undefined ? urgencyEnum : FREEDESKTOP_URGENCY
+  if (urgency === levels.Critical) return "critical"
+  if (urgency === levels.Low) return "low"
+  return "normal"
+}
+
+// How long a toast stays on screen, in ms; 0 means never. The app's
+// expireTimeout is deliberately not a parameter -- the user's setting wins,
+// and omitting it keeps that visible at the call site.
+function durationFor(urgency, settings, urgencyEnum) {
+  var name = urgencyName(urgency, urgencyEnum)
+  var durations = settings && typeof settings === "object" ? settings.popupDurationMs : null
+  var ms = durations && typeof durations === "object" ? durations[name] : undefined
+
+  // Anything unusable falls back to the built-in default. A NaN reaching the
+  // countdown would divide into it forever and the toast would never leave.
+  if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return DEFAULT_DURATIONS[name]
+  return ms
+}
