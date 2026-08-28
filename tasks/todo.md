@@ -64,7 +64,7 @@ rewritten on every startup.
 
 ## Phase 2: The round trip
 
-## Task 2: Mount the sidecar and migrate the file to v4
+## Task 2: Mount the sidecar and migrate the file to v4  [DONE]
 
 **Description:** Create `NotificationState.qml`, mount it in `Service.qml` as
 `forkState` (hook 2), and point `loadSettings`/`flushSettings` at it (hook 5).
@@ -84,41 +84,61 @@ the null guard.
 on a live shell and by `check-delta.sh`.
 
 **Acceptance criteria:**
-- [ ] `forkState.settings` is complete and non-null from construction, before any file load
-- [ ] The existing v3 file migrates: `dnd` preserved, rewritten at `version: 4` with defaults
-- [ ] A missing file produces stock defaults and a valid v4 file, with no error in the shell log
-- [ ] A file of invalid JSON logs exactly one warning and yields defaults
-- [ ] Hooks 2 and 5 carry `// fork:` markers naming `SPEC-settings.md`
-- [ ] No behavior change to notifications: toasts still appear, still top-center, DND still toggles
+- [x] `forkState.settings` is complete and non-null from construction, before any file load
+- [x] The existing v3 file migrates: `dnd` preserved, rewritten at `version: 4` with defaults
+- [x] A missing file produces stock defaults and a valid v4 file, with no error in the shell log
+- [x] A file of invalid JSON logs exactly one warning and yields defaults
+- [x] Hooks 2 and 5 carry `// fork:` markers naming `SPEC-settings.md`
+- [x] No behavior change to notifications: toasts still appear, still top-center, DND still toggles
 
 **Verification:**
-- [ ] `cp ~/.local/state/omarchy/notifications.json /tmp/` first — this task rewrites real user state
-- [ ] `omarchy restart shell` → file becomes v4, `dnd` unchanged
-- [ ] `rm` the file, restart → recreated at v4 with defaults, no log error
-- [ ] `printf '{' > ` the file, restart → one warning, defaults, notifications still work
-- [ ] **Idempotence:** restart twice with no user action → the file's mtime is unchanged on the second restart (proves the `_hydrating` guard survived)
-- [ ] `omarchy-shell notifications toggleDnd` → still works, value persists across a restart
-- [ ] `./scripts/check-delta.sh` → passes, reports the new added-line count
-- [ ] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
+- [x] `cp ~/.local/state/omarchy/notifications.json /tmp/` first — this task rewrites real user state
+- [x] `omarchy restart shell` → file becomes v4, `dnd` unchanged
+- [x] `rm` the file, restart → recreated at v4 with defaults, no log error
+- [x] `printf '{' > ` the file, restart → one warning, defaults, notifications still work
+- [x] **Idempotence:** restart twice with no user action → the file's mtime is unchanged on the second restart (proves the `_hydrating` guard survived)
+- [x] `omarchy-shell notifications toggleDnd` → still works, value persists across a restart
+- [x] `./scripts/check-delta.sh` → passes, reports the new added-line count
+- [x] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
 
 **Dependencies:** Task 1
 
-**Files likely touched:**
+**Files touched:**
 - `NotificationState.qml` (new)
-- `Service.qml` (hooks 2 and 5)
-- `docs/spec/SPEC-fork-seam.md` (record the hooks as spent)
+- `Service.qml` (hooks 2 and 5 — 4 hunks, +12 lines)
+- `NotificationPolicy.js` (added `dndPresent`, see below)
+- `test/settings.test.js` (2 tests for it)
+- `docs/spec/SPEC-fork-seam.md` (hooks recorded as spent)
 
-**Estimated scope:** S (3 files)
+**Estimated scope:** M (5 files)
+
+**An upstream guard that would have been lost silently.** Upstream only assigns
+`persisted.doNotDisturb` when the file actually carried a boolean `dnd`, because
+`PersistentProperties` survives an in-process QML reload while the file may be
+absent. Clamping turns a missing `dnd` into `false`, so hydrating it would have
+switched DND *off* under a user who had it on. `parseSettings` now reports
+`dndPresent`, and `hydrate()` returns a result shaped like upstream's — `dnd`
+null when absent — which both preserves the guard and leaves upstream's
+hydration block unforked.
+
+**Under budget.** Hook 1 (an import in `Service.qml`) proved unnecessary: the
+sidecar imports the policy itself. Hook 5 came in cheap for the reason above.
+26 of 60 added lines used after this module's two hooks.
+
+**Verified on a live shell**, including the destructive cases: the real v3 file
+migrated with `dnd` intact, a deleted file was recreated, a corrupt file was
+repaired with exactly one warning logged, and notifications kept working
+throughout. DND round-tripped on → restart → on → off → restart → off.
 
 ---
 
-## Checkpoint A: Migration is safe
+## Checkpoint A: Migration is safe  [REACHED]
 
-- [ ] The real settings file survived a v3 → v4 round trip with `dnd` intact
-- [ ] Deleting the file and restarting reproduces stock defaults
-- [ ] A corrupt file does not stop notifications from working
-- [ ] Restarting twice does not rewrite the file the second time
-- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
+- [x] The real settings file survived a v3 → v4 round trip with `dnd` intact
+- [x] Deleting the file and restarting reproduces stock defaults
+- [x] A corrupt file does not stop notifications from working — one warning, defaults, toasts fine
+- [x] Restarting twice does not rewrite the file the second time (mtime unchanged)
+- [x] `node --test "test/**/*.test.js"` (65) and `./scripts/check-delta.sh` (+26/60) pass
 - [ ] Review with human before proceeding
 
 ---

@@ -115,10 +115,16 @@ function hasLegacyPayload(parsed) {
   return false
 }
 
-// Returns { error, errorMessage, settings, needsRewrite }.
+// Returns { error, errorMessage, settings, dndPresent, needsRewrite }.
 //
 // `settings` is always complete and always clamped, whatever came in -- there is
 // no input for which a consumer has to check before reading a field.
+//
+// `dndPresent` says whether the file actually carried a boolean `dnd`. Clamping
+// turns an absent one into `false`, and the service must be able to tell those
+// apart: PersistentProperties survives an in-process QML reload while the file
+// may be missing or unreadable, so hydrating a `false` that was never written
+// would silently switch do-not-disturb off under the user.
 //
 // `needsRewrite` answers "does the file on disk differ from what we would write
 // now", which covers a v3 document, a legacy payload, an out-of-range value and
@@ -134,6 +140,7 @@ function parseSettings(raw) {
       error: false,
       errorMessage: "",
       settings: defaultSettings(),
+      dndPresent: false,
       needsRewrite: true
     }
   }
@@ -146,19 +153,20 @@ function parseSettings(raw) {
       error: true,
       errorMessage: String(e),
       settings: defaultSettings(),
+      dndPresent: false,
       needsRewrite: true
     }
   }
 
   var settings = clampSettings(parsed)
-  var legacy = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? hasLegacyPayload(parsed)
-    : false
+  var isObject = !!parsed && typeof parsed === "object" && !Array.isArray(parsed)
+  var legacy = isObject ? hasLegacyPayload(parsed) : false
 
   return {
     error: false,
     errorMessage: "",
     settings: settings,
+    dndPresent: isObject && typeof parsed.dnd === "boolean",
     needsRewrite: legacy || serializeSettings(settings) !== text
   }
 }

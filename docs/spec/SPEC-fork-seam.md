@@ -40,17 +40,24 @@ sidecar. That is the test to apply when in doubt.
 Every permitted hook, its module, and its budget. `check-delta.sh` reads this
 table's marker strings out of `Service.qml`.
 
-| # | Location in `Service.qml` | Kind | Module | Budget |
-|---|---|---|---|---|
-| 1 | Import block: `import "NotificationPolicy.js" as Policy` | Mount | `fork-seam` | 1 |
-| 2 | Body: `NotificationState { id: forkState; service: service }` | Mount | `settings` | 3 |
-| 3 | `durationFor()` body | Delegation | `timing` | 3 |
-| 4 | `historyLimit` property binding | Delegation | `history-store` | 1 |
-| 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 |
-| 6 | `handleNotification()` — one call before the model insert | Delegation | `popup-cap` | 2 |
-| 7 | Popup `Repeater` `model` and `delegate` | Mount | `stacking` | 6 |
-| 8 | `archivePopupFileFor()` — one revision-bump call | Delegation | `history-store` | 2 |
-| 9 | `clearHistory()` — one revision-bump call | Delegation | `history-store` | 1 |
+| # | Location in `Service.qml` | Kind | Module | Budget | Status |
+|---|---|---|---|---|---|
+| 1 | Import block: `import "NotificationPolicy.js" as Policy` | Mount | `fork-seam` | 1 | not needed — `NotificationState.qml` imports the policy, so `Service.qml` never does |
+| 2 | Body: `NotificationState { id: forkState; service: service }` | Mount | `settings` | 3 | spent |
+| 3 | `durationFor()` body | Delegation | `timing` | 3 | — |
+| 4 | `historyLimit` property binding | Delegation | `history-store` | 1 | — |
+| 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 | spent |
+| 6 | `handleNotification()` — one call before the model insert | Delegation | `popup-cap` | 2 | — |
+| 7 | Popup `Repeater` `model` and `delegate` | Mount | `stacking` | 6 | — |
+| 8 | `archivePopupFileFor()` — one revision-bump call | Delegation | `history-store` | 2 | — |
+| 9 | `clearHistory()` — one revision-bump call | Delegation | `history-store` | 1 | — |
+
+Usage after `settings`: **26 of 60 added lines.** Hook 1 turned out to be
+unnecessary — the sidecar imports `NotificationPolicy.js` itself, so
+`Service.qml` needs no import of its own. Hook 5 also came in under budget by
+leaving upstream's DND hydration block untouched: `NotificationState.hydrate()`
+returns a result shaped like upstream's parser, `dnd` null when absent, so those
+two lines never had to be forked.
 
 Existing fork lines (popup column centering) are unchanged and counted
 separately. Hook 7 also *deletes* roughly sixty upstream lines — the Repeater

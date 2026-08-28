@@ -253,3 +253,29 @@ test("a v4 file is still readable by upstream's own parser", function() {
   assert.strictEqual(parsed.dnd, true)
   assert.strictEqual(parsed.legacy, false)
 })
+
+// -------------------------------------------------- dnd presence
+
+// Upstream only assigns persisted.doNotDisturb when the file actually carried a
+// boolean `dnd`, because PersistentProperties survives an in-process QML reload
+// while the file may be absent or unreadable. Clamping turns a missing `dnd`
+// into `false`, which would silently clobber a live DND=on -- so the parse
+// result has to keep saying whether the value was really there.
+test("parseSettings reports whether dnd was actually in the file", function() {
+  assert.strictEqual(policy.parseSettings('{"version":4,"dnd":true}').dndPresent, true)
+  assert.strictEqual(policy.parseSettings('{"version":4,"dnd":false}').dndPresent, true)
+  assert.strictEqual(policy.parseSettings('{"version":3,"dnd":false}').dndPresent, true)
+
+  assert.strictEqual(policy.parseSettings("").dndPresent, false, "absent file")
+  assert.strictEqual(policy.parseSettings("{").dndPresent, false, "corrupt file")
+  assert.strictEqual(policy.parseSettings("{}").dndPresent, false, "no dnd key")
+  assert.strictEqual(policy.parseSettings('{"dnd":"yes"}').dndPresent, false, "wrong type is not a value")
+  assert.strictEqual(policy.parseSettings('{"dnd":null}').dndPresent, false)
+  assert.strictEqual(policy.parseSettings("[]").dndPresent, false, "not an object")
+})
+
+test("a settings object still carries a usable dnd even when absent from the file", function() {
+  var r = policy.parseSettings("{}")
+  assert.strictEqual(r.dndPresent, false)
+  assert.strictEqual(r.settings.dnd, false, "the object is still complete")
+})

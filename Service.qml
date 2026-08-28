@@ -780,6 +780,10 @@ Item {
 
   // ---------------------------------------------------- settings persistence
 
+  // fork: the fork's settings document, and later its grouping and history
+  // state, live in a sidecar upstream has no file for -- SPEC-settings.md
+  NotificationState { id: forkState; service: service }
+
   FileView {
     id: settingsFile
     path: service.settingsPath
@@ -814,8 +818,9 @@ Item {
     // in Component.onCompleted can both end up calling here.
     if (service.settingsLoaded) return
 
-    var parsed = NotificationLogic.parseSettings(raw)
-    if (parsed.error) console.warn("notifications: settings parse failed:", parsed.errorMessage || "")
+    // fork: the v4 document supersedes upstream's dnd-only parse; the result
+    // keeps upstream's shape so the hydration below is unchanged -- SPEC-settings.md
+    var parsed = forkState.hydrate(raw)
 
     if (parsed.dnd !== null) {
       service._hydrating = true
@@ -827,11 +832,14 @@ Item {
     // Versions before the history moved into its own directory kept every
     // notification in here. Rewrite once so that dead payload doesn't sit in
     // the file until the next DND toggle happens to clear it.
-    if (parsed.legacy) service.scheduleSettingsSave()
+    // fork: also rewrites a v3 file or one holding out-of-range values, which
+    // is how the settings document reaches v4 -- SPEC-settings.md
+    if (parsed.needsRewrite) service.scheduleSettingsSave()
   }
 
   function flushSettings() {
-    settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
+    // fork: writes the whole v4 document, not just dnd -- SPEC-settings.md
+    settingsFile.setText(forkState.serialize(persisted.doNotDisturb))
   }
 
   Component.onCompleted: {
