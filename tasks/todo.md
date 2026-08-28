@@ -203,7 +203,7 @@ was mis-sequenced and proved nothing: notification → `yes`, restart → `yes`,
 - [x] Notifications, DND, toasts and `showHistory` all still work
 - [x] `node --test "test/**/*.test.js"` (98) and `./scripts/check-delta.sh` (`+36/60`) pass
 - [x] Real history backed up to `/tmp/history.backup` and restored intact afterwards
-- [ ] Review with human before proceeding
+- [x] Reviewed and approved by the user, 2026-08-28
 
 ---
 
@@ -282,7 +282,7 @@ could not find the block it expected.
 - [x] `git merge upstream` is a no-op
 - [x] Notifications, DND, toasts and `showHistory` all still work on a live shell
 - [x] History state left clean: hostile test entries removed, the real entries restored from backup, `/tmp` probe files deleted
-- [ ] Ready for review; `center-ui` needs only `stacking` and `popup-cap` after this
+- [x] Reviewed and approved by the user, 2026-08-28; `center-ui` needs only `stacking` and `popup-cap` after this
 
 **history-store is complete.** History is readable, reports change, tracks
 unread as a boolean, clears, and can run a stored action safely.
