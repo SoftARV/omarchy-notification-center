@@ -43,7 +43,7 @@ table's marker strings out of `Service.qml`.
 | # | Location in `Service.qml` | Kind | Module | Budget |
 |---|---|---|---|---|
 | 1 | Import block: `import "NotificationPolicy.js" as Policy` | Mount | `fork-seam` | 1 |
-| 2 | Body: `NotificationState { id: state; service: service }` | Mount | `settings` | 3 |
+| 2 | Body: `NotificationState { id: forkState; service: service }` | Mount | `settings` | 3 |
 | 3 | `durationFor()` body | Delegation | `timing` | 3 |
 | 4 | `historyLimit` property binding | Delegation | `history-store` | 1 |
 | 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 |

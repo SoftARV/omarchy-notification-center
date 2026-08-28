@@ -51,4 +51,4 @@ diff <(/usr/lib/qt6/bin/qmllint /usr/share/omarchy/shell/plugins/notifications/S
 ```
 
 This comparison is deliberately not scripted — see the open questions in
-[../tasks/plan.md](../tasks/plan.md).
+[../tasks/fork-seam/plan.md](../tasks/fork-seam/plan.md).

@@ -16,7 +16,7 @@ With grouping on, a slot is a deck; six Discord pings are one slot. With
 grouping off, a slot is a row. This is why the module depends on `stacking` —
 capping raw rows would put a cap of 4 nowhere near four cards of screen space.
 
-`state.slotCount` is `state.groups.length`.
+`forkState.slotCount` is `forkState.groups.length`.
 
 ### Eviction
 

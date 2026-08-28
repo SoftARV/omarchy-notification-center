@@ -1,274 +1,168 @@
-# Tasks: fork-seam
+# Tasks: settings
 
-Plan: `tasks/plan.md`. Spec: `docs/spec/SPEC-fork-seam.md`.
-Every task also clears the project-wide Definition of Done in `docs/spec/SPEC.md`.
+Plan: [`tasks/plan.md`](plan.md). Spec:
+[`docs/spec/SPEC-settings.md`](../docs/spec/SPEC-settings.md).
+Every task also clears the project-wide Definition of Done in
+[`docs/spec/SPEC.md`](../docs/spec/SPEC.md), and commits follow the rules in
+`CLAUDE.local.md` (conventional commits via the `git-commit-helper` skill,
+scope `settings`).
 
 ---
 
-## Phase 1: The guard
+## Phase 1: The schema
 
-## Task 1: Guard the byte-identical upstream files  [DONE]
+## Task 1: NotificationPolicy.js — defaults, clamping, parse, serialize
 
-**Description:** Create `scripts/check-delta.sh` with its first and most
-important check: `NotificationLogic.js` and `components/NotificationCard.qml`
-must be byte-identical to the `upstream` branch. This is the invariant the
-whole fork strategy rests on, it is trivially checkable, and it passes on the
-current tree — so the script is green from its first commit and the habit of
-running it can start immediately.
+**Description:** The first sidecar file. Everything about the settings schema
+that can be decided without a shell: what the defaults are, what each field's
+valid range is, how a v3 or corrupt file becomes a complete v4 object, and how
+that object is written back. This is the only unit-testable part of the module,
+so it is where the correctness lives.
+
+Clamp, never reject. A field out of range falls back to its default and the
+rest of the file still loads — a corrupt settings file must not cost the user
+their notifications.
 
 **Acceptance criteria:**
-- [x] `scripts/check-delta.sh` exists, is executable, and exits 0 on the current tree
-- [x] It exits non-zero and names the offending file when either guarded file differs from `upstream`
-- [x] It exits 0 with an explanatory note, not an error, when the `upstream` branch is absent
+- [ ] `defaultSettings()` returns every key in the v4 schema, with upstream's current constants as values (`low: 5000`, `normal: 8000`, `critical: 0`, `maxPopupDurationMs: 30000`, `maxVisiblePopups: 4`, `groupByApp: true`, `historyLimit: 100`, `historyLastSeen: 0`)
+- [ ] `clampSettings(obj)` returns a complete object for any input at all — `null`, `{}`, an array, a string, wrong-typed fields — never missing a key
+- [ ] Every field clamps to the ranges in the spec's table; out-of-range values fall back to that field's default, not to zero
+- [ ] `parseSettings(raw)` migrates v3 (and the legacy `pending`/`past`/`entries` shapes) by keeping `dnd` and defaulting everything else
+- [ ] Invalid JSON yields full defaults and reports the error once, without throwing
+- [ ] `serializeSettings(obj)` round-trips: `parseSettings(serializeSettings(x))` deep-equals `clampSettings(x)`
+- [ ] Output is stable — same input, byte-identical output — so an unchanged settings object never produces a spurious file write
 
 **Verification:**
-- [x] `./scripts/check-delta.sh` → exits 0
-- [x] `echo "" >> NotificationLogic.js && ./scripts/check-delta.sh` → non-zero, names the file; then `git checkout NotificationLogic.js`
-- [x] Same negative test for `components/NotificationCard.qml`
-- [x] Works against an uncommitted edit (dirty tree), not just committed state
-- [x] `git branch -m upstream upstream-tmp && ./scripts/check-delta.sh` → exits 0 with a note; then rename back
-- [x] Also covered automatically: 9 tests in `test/check-delta.test.js`, run against a
-      throwaway fixture repo so no negative case ever touches this working tree
-- [x] Deletion of a verbatim file is caught (not in the original list; found while testing)
-- [x] Running outside a git repository fails cleanly rather than checking nothing
+- [ ] `node --test "test/**/*.test.js"` → all pass, including the new `test/settings.test.js`
+- [ ] Tests cover the real v3 file's exact contents (`{"version":3,"dnd":false}`) as a migration fixture
+- [ ] Tests cover the spec's hostile example: `{"version":4,"maxVisiblePopups":9999,"groupByApp":"yes","historyLimit":-1}` → 20 / true / 1
+- [ ] `./scripts/check-delta.sh` → still passes (this task adds a sidecar, touching no upstream file)
 
 **Dependencies:** None
 
-**Files touched:**
-- `scripts/check-delta.sh`
-- `test/check-delta.test.js`
-- `docs/spec/SPEC.md` (corrected the documented test command -- see note below)
+**Files likely touched:**
+- `NotificationPolicy.js` (new)
+- `test/settings.test.js` (new)
 
-**Estimated scope:** S (3 files)
-
-**Note:** `SPEC.md` documented `node --test test/`, which errors on node 26 --
-a directory argument is resolved as a module. Corrected to bare `node --test`
-throughout, with the reason recorded in the command block so nobody re-adds it.
+**Estimated scope:** S (2 files)
 
 ---
 
-## Task 2: Mark the existing fork lines and guard Service.qml  [DONE]
+## Phase 2: The round trip
 
-**Description:** Add `// fork:` markers to the four existing hunks in
-`Service.qml` (the top-center popup change), then extend `check-delta.sh` with
-checks 2-4: the added-line budget, the requirement that every changed hunk
-carries a marker, and the requirement that each marker names a spec file that
-exists in `docs/spec/`. The markers come first in the same task because check 3
-cannot pass without them, and a task must leave the tree green.
+## Task 2: Mount the sidecar and migrate the file to v4
 
-Pure-deletion hunks — the removed `anchors.rightMargin` line — get a one-line
-`// fork:` comment stating what was removed and why, per the decision in
-`tasks/plan.md`. Markers go on their own line above the construct, never inline
-inside a binding.
+**Description:** Create `NotificationState.qml`, mount it in `Service.qml` as
+`forkState` (hook 2), and point `loadSettings`/`flushSettings` at it (hook 5).
+After this the shell reads the existing v3 file, keeps its `dnd`, and writes it
+back as v4 with defaults filled in.
+
+Reuse `Service.qml`'s existing `FileView`, debounce timer, `settingsLoaded`
+re-entry guard and `_hydrating` DND guard. A second `FileView` on the same path
+would race the atomic write; dropping either guard causes a needless rewrite on
+every startup.
+
+`forkState.settings` is initialised to `defaultSettings()` at declaration, not
+null — five modules read it before the file loads, and one of them would forget
+the null guard.
+
+**No unit test.** This is QML wiring; its logic was tested in Task 1. Verified
+on a live shell and by `check-delta.sh`.
 
 **Acceptance criteria:**
-- [x] All **five** existing fork hunks in `Service.qml` carry a `// fork:` marker naming `SPEC.md`
-- [x] The script counts **added** lines against the 60-line budget and reports the current count
-- [x] It fails, naming the line number, on an added `Service.qml` line with no marker in its hunk
-- [x] It fails when a marker names a spec file absent from `docs/spec/`
-- [x] `docs/spec/SPEC-fork-seam.md` budget wording amended to "added lines"
-- [x] No runtime behavior change: service loads and handles notifications
+- [ ] `forkState.settings` is complete and non-null from construction, before any file load
+- [ ] The existing v3 file migrates: `dnd` preserved, rewritten at `version: 4` with defaults
+- [ ] A missing file produces stock defaults and a valid v4 file, with no error in the shell log
+- [ ] A file of invalid JSON logs exactly one warning and yields defaults
+- [ ] Hooks 2 and 5 carry `// fork:` markers naming `SPEC-settings.md`
+- [ ] No behavior change to notifications: toasts still appear, still top-center, DND still toggles
 
 **Verification:**
-- [x] `./scripts/check-delta.sh` → exits 0, reports `+14/60 added lines`
-- [x] Add an unmarked line to `Service.qml` → fails with the line number; reverted
-- [x] Add an unmarked line *directly above a marker* → fails (see bug note below)
-- [x] Add a `// fork: SPEC-nonexistent.md` marker → fails naming the missing spec; reverted
-- [x] `DELTA_BUDGET=5 ./scripts/check-delta.sh` → fails on the budget
-- [x] `/usr/lib/qt6/bin/qmllint Service.qml` → 32 warnings, warning categories identical to upstream's own file
-- [x] `./install.sh && omarchy restart shell && notify-send` → service live, popup persisted
-- [x] **Visual**: toasts still render top-center (confirmed by the user, 2026-08-28)
-
-**Bug found and fixed during verification:** the first cut of the marker check
-asked "does this hunk contain a marker anywhere". An unmarked line placed
-directly above a marked one joined its hunk and passed — the guard reporting
-`ok` on a tree with unlabelled fork code in it. Caught by running the negative
-case against the real `Service.qml`; the fixture had missed it because its
-unmarked line was nowhere near a marker. The rule is now "the **first** added
-line of a hunk must carry the marker", with a regression test.
-
-**Documented limit:** a marker covers the contiguous added block it introduces.
-A line added directly *below* a marker is indistinguishable from a legitimate
-two-line hook, and only per-line markers would separate them — which would
-double the delta in order to police the delta. The budget check is what bounds
-a labelled block from growing. Recorded as a passing test so the limit is not
-mistaken for a guarantee.
+- [ ] `cp ~/.local/state/omarchy/notifications.json /tmp/` first — this task rewrites real user state
+- [ ] `omarchy restart shell` → file becomes v4, `dnd` unchanged
+- [ ] `rm` the file, restart → recreated at v4 with defaults, no log error
+- [ ] `printf '{' > ` the file, restart → one warning, defaults, notifications still work
+- [ ] **Idempotence:** restart twice with no user action → the file's mtime is unchanged on the second restart (proves the `_hydrating` guard survived)
+- [ ] `omarchy-shell notifications toggleDnd` → still works, value persists across a restart
+- [ ] `./scripts/check-delta.sh` → passes, reports the new added-line count
+- [ ] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
 
 **Dependencies:** Task 1
 
-**Files touched:**
-- `Service.qml`
-- `scripts/check-delta.sh`
-- `test/check-delta.test.js`
-- `docs/spec/SPEC-fork-seam.md`
-- `tasks/plan.md` (open questions resolved)
+**Files likely touched:**
+- `NotificationState.qml` (new)
+- `Service.qml` (hooks 2 and 5)
+- `docs/spec/SPEC-fork-seam.md` (record the hooks as spent)
 
-**Estimated scope:** S (5 files)
+**Estimated scope:** S (3 files)
 
 ---
 
-## Checkpoint A: The guard is real  [REACHED]
+## Checkpoint A: Migration is safe
 
-- [x] `./scripts/check-delta.sh` exits 0 on a clean tree (`+14/60 added lines`)
-- [x] Each of the four checks has been **observed to fail** when deliberately broken — a guard nobody has seen fail is not a guard. Doing this is what found the marker bug.
-- [x] `git merge upstream` reports "Already up to date."
-- [x] Notifications work on a live shell; 19 tests pass
+- [ ] The real settings file survived a v3 → v4 round trip with `dnd` intact
+- [ ] Deleting the file and restarting reproduces stock defaults
+- [ ] A corrupt file does not stop notifications from working
+- [ ] Restarting twice does not rewrite the file the second time
+- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
 - [ ] Review with human before proceeding
 
 ---
 
-## Phase 2: The scaffold
+## Phase 3: Changing a value
 
-## Task 3: Test harness for QML JS resources  [DONE]
+## Task 3: Setters and the notification-settings IPC target
 
-**Description:** Create `test/harness.js`, which loads a QML `.js` resource into
-a fresh V8 context and returns its declared functions, plus a test that proves
-the harness works by exercising `NotificationLogic.js`. Every later module's
-unit tests depend on this. The approach was verified during planning against
-node v26.7.0, so this is transcription rather than exploration.
+**Description:** Add the five setters to `NotificationState.qml`, the
+`settingsChanged` signal, and an `IpcHandler` on target
+`notification-settings`. This is what makes the module observable: until
+`center-ui` exists, IPC is the only way to invoke a setter, which is why they
+land together.
 
-The harness must return only the functions the file declares — the seeded
-context globals (`Date`, `Math`, `JSON`, `console`) must not leak into the
-returned surface, or tests will assert against the wrong thing.
+The handler lives in the sidecar, so it costs no further `Service.qml` hook and
+cannot collide with an IPC name a future upstream adds to its own
+`notifications` target.
+
+Every setter clamps before storing — arguments arrive from bash as strings and
+are as untrusted as notification content.
 
 **Acceptance criteria:**
-- [x] `node --test "test/**/*.test.js"` runs and passes (30 tests)
-- [x] `harness.load("NotificationLogic.js")` returns the file's declarations and no ambient globals
-- [x] Tests cover known-good and known-bad input for real upstream functions — `parseExecArgv` fail-closed cases, `popupFileName`, `isEphemeralApp` — proving the harness exercises behavior rather than just importing
-- [x] Loading a nonexistent path fails with a message naming the path and where it looked
+- [ ] `getSettings` returns the full current settings as JSON
+- [ ] `setDuration <low|normal|critical> <ms>`, `setMaxVisible`, `setGrouping`, `setHistoryLimit` each apply, clamp, and persist
+- [ ] Out-of-range and non-numeric arguments return `invalid` and change nothing
+- [ ] An unknown urgency name returns `invalid` rather than creating a key
+- [ ] `settingsChanged` fires after a change lands, so later modules can bind to it
+- [ ] Ten setter calls in one second produce exactly one file write (the 200 ms debounce)
+- [ ] Values survive `omarchy restart shell`
+- [ ] The existing `notifications` IPC target is untouched — `dndState`, `showHistory`, `dismissAll` and the rest still work
 
 **Verification:**
-- [x] `node --test "test/**/*.test.js"` → all pass
-- [x] `git diff upstream -- NotificationLogic.js` → empty (the harness reads it, never writes it)
-- [x] `./scripts/check-delta.sh` → still exits 0
-- [x] `./install.sh` → `test/` is not copied into the plugin directory
+- [ ] `omarchy-shell notification-settings getSettings` → full JSON
+- [ ] `omarchy-shell notification-settings setMaxVisible 2` → `ok`; `... setMaxVisible 9999` → clamps to 20; `... setMaxVisible abc` → `invalid`
+- [ ] `omarchy-shell notification-settings setDuration normal 20000` → `ok`; `... setDuration bogus 5000` → `invalid`
+- [ ] Loop ten `setMaxVisible` calls, watch the file's mtime → one write
+- [ ] `omarchy restart shell && omarchy-shell notification-settings getSettings` → values persisted
+- [ ] `omarchy-shell notifications ping` → still `ok` (upstream's target intact)
+- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
 
-**Design change made during the task.** The harness first ran resources in a
-fresh `vm` context, which is the obvious choice and quietly wrong: every value
-crossing back out carried that realm's prototypes, so `deepStrictEqual` failed
-with "same structure but not reference-equal" on an array that was correct in
-every observable way. Since `groupPopups`, `parseSettings` and `popupRoles` all
-return arrays and objects, all six remaining modules would have paid a tax to
-buy isolation none of them needed. The harness now wraps the source in a
-function and runs it in the host realm — which keeps declarations out of the
-host global just as well, while QML-only globals stay absent from node either
-way. Pinned by a regression test.
+**Dependencies:** Task 2
 
-**Second command correction.** `test/harness.js` was itself being run as a test
-file: node's default discovery matches every `.js` under `test/`, so a helper
-with no assertions reported as a passing test and inflated the count. The
-command is now `node --test "test/**/*.test.js"`, scoped and quoted.
-
-**Dependencies:** None (parallelizable with Tasks 1-2)
-
-**Files touched:**
-- `test/harness.js`
-- `test/harness.test.js`
-- `docs/spec/SPEC.md` (test command, and the harness description)
+**Files likely touched:**
+- `NotificationState.qml`
+- `test/settings.test.js` (argument coercion cases)
+- `docs/spec/SPEC-settings.md` (tick the delivered interface)
 
 **Estimated scope:** S (3 files)
 
 ---
 
-## Phase 3: The record
+## Checkpoint B: Module complete
 
-## Task 4: README — how the fork is structured  [DONE]
-
-**Description:** Add a "How the fork is structured" section to `README.md`: the
-sidecar rule, the hook inventory in `docs/spec/SPEC-fork-seam.md` as the source
-of truth, and `check-delta.sh` added to the merge procedure. The existing "the
-whole fork is seven lines" claim becomes a statement about hook points, since it
-is about to stop being literally true. Add a pointer to
-`docs/spec/CAPABILITY-MAP.md` so the root README stays a plugin README rather
-than turning into a project plan.
-
-**Scope changed by the user mid-task:** the README is to be *condensed*, with
-long explanations moved into their own files and referenced. So rather than
-adding a section, this task moved detail out — 81 lines down to 58, while
-covering more ground.
-
-**Acceptance criteria:**
-- [x] README states the sidecar rule and the `// fork:` marker convention, in five lines, linking `docs/spec/SPEC-fork-seam.md` for the rest
-- [x] The upstream procedure ends with `./scripts/check-delta.sh` — now in `docs/upstream.md`, which the README links, rather than in the README itself
-- [x] A pointer to `docs/spec/CAPABILITY-MAP.md` exists; no plan content is duplicated
-- [x] Install and DND-conflict instructions preserved: the commands stay in the README, the reasoning moved to `docs/install.md`
-
-**Verification:**
-- [x] Every command in the README and both new docs runs as written
-- [x] Every relative link in every markdown file resolves (enforced by `test/docs.test.js`)
-- [x] README is under the 60-line budget (enforced)
-- [x] No documentation file is orphaned (enforced)
-- [x] The README's factual claims re-checked against the tree: two files byte-identical, five `// fork:` markers present, qmllint categories identical to upstream
-
-**Deliberately dropped:** the "What differs from upstream" table and the "the
-whole fork is seven lines" sentence. Both were about to become maintenance
-liabilities — the table duplicated the hook inventory in `SPEC-fork-seam.md`,
-and the line count stops being seven the moment a module lands. The structure
-section says the durable thing instead.
-
-**Tests are structural, not editorial.** `test/docs.test.js` checks what rots
-silently: a link pointing at a renamed file, a README growing past the point
-anyone reads it, a doc nobody links. It has no opinion on prose.
-
-**Dependencies:** Task 2 (documents the finished script)
-
-**Files touched:**
-- `README.md` (81 → 58 lines)
-- `docs/install.md` (new)
-- `docs/upstream.md` (new)
-- `docs/spec/CAPABILITY-MAP.md` (spec list turned into real links, so it works as the index it claims to be)
-- `test/docs.test.js` (new)
-
-**Estimated scope:** M (5 files)
-
----
-
-## Task 5: ADR 0001 — the sidecar seam  [DONE]
-
-**Description:** Record the decision in `docs/adr/0001-sidecar-seam.md`: why fork
-logic lives in sidecar files rather than in `Service.qml`, and why the rejected
-alternative — a separate companion plugin — was rejected. Creates `docs/adr/`.
-Without this, the next person to hit a merge conflict re-litigates a settled
-question.
-
-**Acceptance criteria:**
-- [x] `docs/adr/0001-sidecar-seam.md` states status, context, decision, consequences
-- [x] It names the rejected alternative (separate companion plugin) and why, grounded in `shell.serviceFor()` accepting any plugin id
-- [x] It records the accepted cost: the delta grows from 7 lines to a budgeted 60
-- [x] It links `docs/spec/SPEC-fork-seam.md` for the live hook inventory rather than copying it — enforced by a test that fails if the ADR contains any table
-
-**Verification:**
-- [x] Links resolve, and the ADR is reachable from `SPEC-fork-seam.md` (orphan test)
-- [x] The hook inventory is referenced, not duplicated — one source of truth
-- [x] Factual claims re-checked against the tree: `serviceFor` at `shell.qml:275` takes any plugin id, `omarchy.media` pairs service + bar-widget in one manifest, upstream's `Service.qml` is 1063 lines
-- [x] 70-line budget enforced; the first draft was 71 and got tightened
-
-**Note:** the "seven-line delta" is accurate as of the decision. It is 14 added
-lines now — from the `// fork:` markers this decision itself introduced.
-
-**Dependencies:** None (parallelizable)
-
-**Files touched:**
-- `docs/adr/0001-sidecar-seam.md` (new)
-- `docs/spec/SPEC-fork-seam.md` (ADR references turned into links)
-- `test/adr.test.js` (new)
-
-**Estimated scope:** S (3 files)
-
----
-
-## Checkpoint B: Module complete  [REACHED]
-
-- [x] Every acceptance criterion in `docs/spec/SPEC-fork-seam.md` is met
-- [x] `node --test "test/**/*.test.js"` passes — 39 tests
-- [x] `./scripts/check-delta.sh` passes (`+14/60`), and has been seen to fail on each check
-- [x] `qmllint Service.qml` reports no warning category upstream does not also report
-- [x] `git merge upstream` is a no-op
-- [x] `./install.sh` ships no new file into the plugin directory
-- [x] Notifications work on a live shell
-- [x] Ready for review; `settings` is unblocked
-
-**fork-seam is complete.** The guard, the marker convention, the test scaffold,
-the condensed docs and the decision record are all in place. Next module in
-build order: `settings` (`docs/spec/SPEC-settings.md`), which needs its own
-`/plan` pass before `/build`.
+- [ ] Every acceptance criterion in `docs/spec/SPEC-settings.md` is met
+- [ ] `node --test "test/**/*.test.js"` passes
+- [ ] `./scripts/check-delta.sh` passes and is still within budget
+- [ ] `qmllint` reports no warning category upstream does not also report
+- [ ] `git merge upstream` is a no-op
+- [ ] `./install.sh` ships the new sidecar files and nothing from `test/ docs/ scripts/ tasks/`
+- [ ] Notifications, DND and history all still work on a live shell
+- [ ] Ready for review; `timing`, `stacking` and `history-store` are unblocked

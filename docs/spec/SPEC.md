@@ -126,7 +126,7 @@ components/NotificationCard.qml      BYTE-IDENTICAL to upstream. Never edited.
 
 # --- sidecar files: 100% ours, upstream will never have them -------------
 NotificationPolicy.js                Pure logic: settings parse, duration, grouping, capping
-NotificationState.qml                Settings + grouping + cap state. One-line instantiation in Service.qml.
+NotificationState.qml                Settings + grouping + cap state. Mounted by one line in Service.qml.
 components/PopupSlot.qml             Lifetime timer + card, lifted out of Service.qml's Repeater delegate
 components/NotificationDeck.qml      Collapsed/expanded same-app deck
 Center.qml                           barWidget entry point: bell button + dropdown panel
@@ -203,7 +203,7 @@ greppable, countable by `check-delta.sh`, and unmistakable during a merge:
 ```qml
 // fork: durations come from settings, not the upstream constants -- SPEC-timing.md
 function durationFor(urgency, expireTimeout) {
-  return Policy.durationFor(urgency, expireTimeout, state.settings, NotificationUrgency)
+  return Policy.durationFor(urgency, expireTimeout, forkState.settings, NotificationUrgency)
 }
 ```
 
