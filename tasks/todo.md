@@ -239,36 +239,39 @@ interpretation. No string is ever built and handed to a shell.
 **Dependencies:** Task 3
 
 **Files touched:**
-- `NotificationState.qml` (model, read `Process`, `notification-history` target)
-- `NotificationPolicy.js` (`historyRoles`)
-- `test/history-store.test.js` (3 more tests)
-- `docs/spec/SPEC-history-store.md` (lazy → warm, see below)
+- `NotificationState.qml` (`clearHistory`, `invokeHistoryEntry`, two IPC calls)
+- `NotificationPolicy.js` (`historyRowIndex`)
+- `test/history-store.test.js` (6 more tests)
 
-**Estimated scope:** S (4 files). No `Service.qml` change; the guard reads
-`+23/60`, unmoved.
+**Estimated scope:** S (3 files). No `Service.qml` change; the guard holds at `+36/60`.
 
-**The spec's "lazy" read had to go.** A read is a subprocess and IPC cannot wait
-on one, so a lazily-loaded model returns empty on its first query — `list` would
-have needed calling twice to see anything. The stated reason for lazy was
-memory, and a hundred entries is roughly 50 KB. The model is now loaded once at
-startup and refreshed on demand, which also means `center-ui` will open with
-content instead of flickering through an empty panel. `list` returns the last
-completed read and starts a fresh one, so a query right after a write can be one
-behind; the revision counter in Task 3 closes that.
+**The risk was tested, not argued.** Seven hostile entries were hand-written into
+the history directory and invoked. All six malformed ones — leading-dash program,
+non-array, empty array, non-string element, non-JSON, empty program — returned
+`none` and ran nothing.
 
-**A drift guard rather than a convenience.** `historyRoles()` exists because the
-IPC serialiser copies rows role by role, and a list that fell out of step with
-what `historyRows` produces would drop an image or an `execArgv` with nothing to
-notice. A test asserts the two match exactly.
+**Shell injection disproved by a payload that discriminates.** The first attempt,
+`["touch","/tmp/PWNED; touch /tmp/x"]`, cannot succeed even passed literally: the
+argument contains slashes, so `touch` was asked for a path inside a directory
+that does not exist, and its absence proved nothing. Re-run with
+`["touch","/tmp/semi;colon"]` — literal passing creates one file of that name,
+shell interpretation would create `/tmp/semi`. The literal file appeared;
+`/tmp/semi` did not.
 
-**Verified against real data**, including the destructive cases, with the history
-directory backed up to `/tmp/history.backup` first: 10 real entries listed
-newest-first straight after a restart; a hand-written torn file skipped while all
-10 survived; the directory emptied → `[]` with no error, then restored; five
-overlapping reloads left 10 entries and 10 unique timestamps; a toast still
-appeared while three reads were in flight.
+**`Util` verified reachable rather than assumed**, as the plan asked: `qs.Commons`
+resolves at runtime and a probe entry's action ran.
+
+**Entries are addressed by identity, never position.** A re-read between
+rendering a list and clicking a row would otherwise fire the wrong
+notification's action — the class of bug `SPEC.md` bans index-based dismissal for.
+
+**A bookkeeping error this repaired.** Task 2's and Task 4's file lists were
+textually identical, and Task 2's update used a replace without a count — so its
+notes were written into Task 4's section as well. Caught when Task 4's update
+could not find the block it expected.
 
 ---
+
 
 ## Checkpoint B: Module complete  [REACHED]
 
