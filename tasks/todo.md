@@ -11,7 +11,7 @@ blocks capped at three lines).
 
 ## Phase 1: Reading
 
-## Task 1: History parsing and the unread predicate
+## Task 1: History parsing and the unread predicate  [DONE]
 
 **Description:** The pure half of the module. Turn the concatenated output of
 `awk 1 history/*.json` into ordered, validated rows, and answer "is anything
@@ -21,27 +21,46 @@ One torn file must cost one entry, not the whole history — that is the failure
 this task exists to prevent.
 
 **Acceptance criteria:**
-- [ ] `historyRows(raw)` returns rows newest-first with every role a card needs, including `image` and `execArgv`
-- [ ] A truncated or invalid line is skipped and the surrounding entries still load
-- [ ] Empty input returns an empty array, not null
-- [ ] Rows are shaped exactly like `popupModel` rows, so `NotificationCard` can render them unchanged
-- [ ] `hasUnreadIn(fileNames, lastSeen)` is true when any name's leading timestamp exceeds `lastSeen`
-- [ ] It is false for an empty list, for `lastSeen` in the future, and for names it cannot parse
-- [ ] Neither function throws on any malformed input
+- [x] `historyRows(raw)` returns rows newest-first with every role a card needs, including `image` and `execArgv`
+- [x] A truncated or invalid line is skipped and the surrounding entries still load
+- [x] Empty input returns an empty array, not null
+- [x] Rows are shaped exactly like `popupModel` rows, so `NotificationCard` can render them unchanged
+- [x] `hasUnreadIn(fileNames, lastSeen)` is true when any name's leading timestamp exceeds `lastSeen`
+- [x] It is false for an empty list, for `lastSeen` in the future, and for names it cannot parse
+- [x] Neither function throws on any malformed input
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → all pass, including `test/history-store.test.js`
-- [ ] A test places a truncated file **between** two good ones and asserts both survive
-- [ ] A test uses real serialized entries from this machine's history directory as fixture text
-- [ ] `./scripts/check-delta.sh` → passes; this task touches no upstream file
+- [x] `node --test "test/**/*.test.js"` → all pass, including `test/history-store.test.js`
+- [x] A test places a truncated file **between** two good ones and asserts both survive
+- [x] A test uses real serialized entries from this machine's history directory as fixture text
+- [x] `./scripts/check-delta.sh` → passes; this task touches no upstream file
 
 **Dependencies:** None
 
-**Files likely touched:**
-- `NotificationPolicy.js`
-- `test/history-store.test.js` (new)
+**Files touched:**
+- `NotificationPolicy.js` (`timestampFromFileName`, `hasUnreadIn`)
+- `test/history-store.test.js` (new — 12 tests)
 
 **Estimated scope:** S (2 files)
+
+**Half this task was already written — by upstream.** `parsePopupFiles` splits
+the concatenated output, skips invalid JSON with a comment saying exactly that,
+and sorts newest-first; `historyRows` dedupes and applies the limit;
+`historyEntry` normalises to the `popupModel` role shape. Verified empirically
+before writing anything: a torn line between two good ones costs only itself,
+ordering is newest-first, `image` and `execArgv` survive, empty input gives `[]`.
+
+So no parser was written. The tests that would have covered a new one now pin
+**upstream's** behaviour instead, because this module depends on it — an upstream
+change that broke torn-file tolerance would otherwise surface as an empty panel
+long after the merge that caused it.
+
+**Only `hasUnreadIn` was new.** An unusable `lastSeen` deliberately counts
+everything as unread: failing dark would hide exactly the notifications the
+indicator exists to report.
+
+**Checked against the real directory**, not only fixtures: 10 files,
+`historyLastSeen: 0` → unread `true`; simulating `markSeen` → `false`.
 
 ---
 
