@@ -1,102 +1,124 @@
-# Implementation Plan: timing
+# Implementation Plan: history-store
 
-Module `timing` from [`docs/spec/CAPABILITY-MAP.md`](../docs/spec/CAPABILITY-MAP.md).
+Module `history-store` from [`docs/spec/CAPABILITY-MAP.md`](../docs/spec/CAPABILITY-MAP.md).
 Depends on `settings`, which is merged. Spec:
-[`docs/spec/SPEC-timing.md`](../docs/spec/SPEC-timing.md).
+[`docs/spec/SPEC-history-store.md`](../docs/spec/SPEC-history-store.md).
 
-Earlier modules' task lists are archived under
-[`tasks/fork-seam/`](fork-seam/plan.md) and [`tasks/settings/`](settings/plan.md).
+Earlier task lists are archived under [`tasks/fork-seam/`](fork-seam/plan.md),
+[`tasks/settings/`](settings/plan.md) and [`tasks/timing/`](timing/plan.md).
 
 ## Overview
 
-The first of the five original asks to become visible behaviour. `settings`
-stored a dismiss duration; this module makes toasts obey it.
+Make history readable. The directory has existed since upstream; nothing can
+read it. `showRecentHistory()` replays it onto the screen as toasts, and that is
+the only way to see what arrived.
 
-Small on purpose: one pure function and one hook. The size is the point —
-`fork-seam` and `settings` did the work that lets a behaviour change be fifteen
-lines.
+This module adds a reader, a change signal, an unread indicator and a way to run
+a stored action — the whole contract `center-ui` consumes. It is the last module
+`center-ui` waits on.
 
 ## What planning verified
 
-- **Every notification on this machine sends `expireTimeout=0`.** Ten history
-  entries across Telegram Desktop and `notify-send`, all zero, which upstream
-  reads as "no preference". That is what made the floor-versus-override question
-  cheap to answer: the two rules are indistinguishable for apps in actual use.
-- **Upstream returns `0` for Critical unconditionally**, ignoring `expireTimeout`
-  entirely. Default settings reproduce that exactly, and a user who sets a
-  non-zero critical duration opts out of it deliberately.
-- **Upstream's `switch` sends Normal and every unknown urgency down `default:`.**
-  The urgency-name mapping must do the same, or an unrecognised value would fall
-  through to `undefined` and then to `NaN`.
-- **`requestedDuration()` will become unreferenced.** It is upstream's function;
-  it stays where it is. Deleting upstream code the fork no longer calls is a
-  change with no upside and a merge cost.
+- **Two functions create a history entry**, not one. `archivePopupFileFor` moves
+  a popup that left the screen; `writeHistoryFile` records a DND-silenced
+  notification that never appeared. The inventory listed only the first.
+  Hooking only it would leave the indicator dark for exactly the notifications
+  the user missed while away.
+- **The file queue physically cannot carry a read.** `popupFileProc` has an
+  `onExited` handler and no `StdioCollector`, so the spec's "read through the
+  existing `popupFileQueue`" was not implementable as written.
+- **History filenames are `<timestamp>-<id>.json`.** Confirmed against
+  `popupFileName()`, which builds them from the entry's timestamp and originalId.
+  That is what makes the unread check a filename comparison rather than a parse.
+- **`trimHistoryScript` sorts numerically on those names**, so raising
+  `historyLimit` needs no change to the trim itself — only the number passed in.
+- **`historyLastSeen` already exists in the v4 schema**, clamped and persisted,
+  so the unread indicator needs no schema change.
 
 ## Decisions taken before planning
 
-1. **Override, not floor.** The user's duration wins; the app's `expireTimeout`
-   is ignored. "Control the time a notification appears" is defeated by an app
-   that can overrule it. Resolves open question 1 in `SPEC.md`.
-2. **`maxPopupDurationMs` becomes vestigial.** It only ever capped how far an app
-   could extend a toast; `clampSettings` already caps the user's own value. It
-   keeps its place in the v4 schema rather than forcing a schema change, gets no
-   IPC setter, and is flagged for removal the next time the schema moves.
-3. **`expireTimeout` is not a parameter of `durationFor`.** Accepting and
-   ignoring it would hide the decision inside the function; omitting it puts the
-   decision at the call site where a reader trips over it.
+1. **The sidecar owns its own read `Process`.** Zero `Service.qml` hooks for
+   reading. A read racing a write is self-healing: `mv` is atomic, torn files
+   are skipped by design, and a revision bump prompts a re-read.
+2. **`hasUnread` is a boolean, not a count.** The bar gets a dot, not a number —
+   the useful signal is "there is something to look at", and the list says how
+   much. This replaces the spec's incremental counter, which would have read
+   zero after a restart in contradiction of its own criterion, and it removes
+   the "unread drift" risk entirely. Filenames answer the question directly:
+   is any leading timestamp greater than `historyLastSeen`.
+3. **Hook 8 covers both writers.** Inventory amended, budget 2 → 4 lines.
+4. **A `notification-history` IPC target**, following the pattern approved for
+   `settings`. It costs no `Service.qml` hook and makes every criterion
+   verifiable now rather than after `center-ui`.
 
 ## Architecture Decisions
 
-- **NaN-proof by construction.** The lifetime feeds
-  `remainingLifetime -= 50.0 / lifetime`, and a `NaN` there never reaches zero —
-  the toast simply never leaves. `clampSettings` already guarantees a finite
-  number, so `durationFor` cannot produce `NaN` from valid settings; the explicit
-  fallback covers a caller passing something malformed anyway. Both paths get
-  tests, because the failure is silent and permanent.
-- **The urgency enum is a parameter.** `NotificationUrgency` is a QML type a
-  plain `.js` resource cannot import. Passing it keeps the function pure and
-  node-testable, and is the reason `fork-seam` insisted logic stay out of QML.
-- **One hook, one line.** Hook 3 replaces `durationFor`'s body with a delegating
-  call. Nothing else in `Service.qml` is touched: the countdown timer, the
-  hover-pause and the restart-on-content-change stay exactly as upstream wrote
-  them, and move to `PopupSlot.qml` later as part of `stacking`.
+- **The unread check never parses JSON.** It compares the leading number in each
+  filename against `historyLastSeen` and short-circuits on the first match.
+  Cheap enough to run at startup, exact immediately, and impossible to drift.
+- **Parsing is pure and lives in `NotificationPolicy.js`.** Turning the `awk`
+  output into ordered, validated rows is the testable part; the `Process` and
+  the `ListModel` are the untestable part. The split is what lets the risky
+  logic — skipping a torn file without losing the rest — be tested properly.
+- **`invokeHistoryEntry` reuses `NotificationLogic.parseExecArgv`.** The same
+  fail-closed, structural validation the live toast path uses. A history entry
+  has no live sender, so there is no libnotify action and no focus fallback: an
+  entry with no valid `execArgv` does nothing at all.
+- **Slices are vertical against IPC.** Each task ends with something observable
+  from the shell, which is why the IPC target was worth asking for.
 
 ## Dependency Graph
 
 ```
-T1  NotificationPolicy.durationFor  (pure, unit tested)
+T1  history parsing + unread predicate  (pure, unit tested)
      │
      ▼
-T2  Service.qml hook 3  --  durations take effect on a live shell
+T2  historyModel + loadHistory + `notification-history list`
      │
      ▼
-  Checkpoint -- module complete, and the first ask is real
+T3  revision counter + hasUnread + markSeen   (hooks 4, 8x2, 9)
+     │
+     ▼
+  Checkpoint A -- the store is readable and reports change
+     │
+     ▼
+T4  clearHistory wrapper + invokeHistoryEntry
+     │
+     ▼
+  Checkpoint B -- module complete, center-ui unblocked
 ```
 
-Sequential and short. Nothing here is worth parallelising.
+Sequential: each task needs the previous one's surface to be observable.
 
 ## Task List
 
 Tasks and checkpoints are in [`tasks/todo.md`](todo.md).
 
-### Phase 1: The rule
-- [ ] Task 1: `durationFor` in `NotificationPolicy.js`
+### Phase 1: Reading
+- [ ] Task 1: history parsing and the unread predicate
+- [ ] Task 2: the model, and `notification-history list`
 
-### Phase 2: The behaviour
-- [ ] Task 2: Hook 3 — toasts obey the setting
-- [ ] Checkpoint: module complete
+### Phase 2: Change and unread
+- [ ] Task 3: revision counter, `hasUnread`, `markSeen`
+- [ ] Checkpoint A
+
+### Phase 3: Acting on an entry
+- [ ] Task 4: `clear` and `invoke`
+- [ ] Checkpoint B
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| A `NaN` lifetime freezes a toast on screen permanently | High — silent, and the toast can only be dismissed by hand | `clampSettings` guarantees finite numbers; `durationFor` falls back on anything malformed; dedicated tests for both |
-| An unknown urgency value maps to no name | High — same `NaN` failure | Mapping mirrors upstream's `switch`: anything not Critical or Low is normal. Tested with an out-of-range enum value |
-| A live duration change re-evaluates on-screen toasts | Unknown until observed — QML tracks binding dependencies through function calls, so it may | Task 2 verifies it deliberately and documents what actually happens. The spec previously asserted it could not, on the incorrect grounds that `readonly` means evaluated-once |
-| Override surprises an app that needs a longer toast | Low today | No sender observed here requests a timeout at all. If it bites, the answer is a per-app rule, not a return to floor semantics |
-| Timing a toast by hand is imprecise | Low | Acceptance is ±0.5s on a 20s toast, which a stopwatch clears comfortably. The 0-means-never case is checked by waiting well past any plausible duration |
+| `invokeHistoryEntry` runs attacker-influenced argv | **Highest in the project** — a notification body is attacker-controlled, and this path ends in process execution | Reuse `NotificationLogic.parseExecArgv` unchanged; never build a shell string; `Util.execArgv` only. Task 4 tests a malformed hint, a leading-dash program and a non-array, and confirms nothing runs |
+| One torn file loses the whole history | High — a panel that shows nothing after a crash | Parsing skips invalid entries individually. Tested with a truncated file between two good ones |
+| A read races a write | Low, and self-healing | `mv` is atomic; torn files are skipped; the revision bump prompts a re-read. Accepted deliberately, see decision 1 |
+| The unread dot lies after a restart | Medium — the feature exists for the case where you were away | Filenames answer it without loading anything. Verified by restarting with unread entries present |
+| Raising `historyLimit` to 100 slows the trim | **Measured, not a concern.** 8 ms in steady state | The trim deletes nothing once the directory is at its limit. 486 ms only in the pathological case of deleting 400 files in one pass, off the UI thread |
+| `Util` unreachable from the sidecar | Would block Task 4 | `qs.Commons` is a shell-provided singleton import; `Service.qml` uses it. Verified early in Task 4 rather than assumed |
 
 ## Open Questions
 
-None blocking. Open questions 2 and 3 in `SPEC.md` remain open but belong to
-`popup-cap` and to local tooling respectively, not to this module.
+None blocking. `SPEC.md` open question 2 — what `showHistory` should do now a
+center exists — belongs to `popup-cap` and stays open; this module does not
+change that path.

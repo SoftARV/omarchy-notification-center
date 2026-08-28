@@ -250,3 +250,33 @@ function durationFor(urgency, settings, urgencyEnum) {
   if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return DEFAULT_DURATIONS[name]
   return ms
 }
+
+// ------------------------------------------------------------------ history
+
+// Every field a history row carries. The IPC serialiser copies role by role, so
+// this list drifting from what historyRows produces would drop fields silently.
+var HISTORY_ROLES = [
+  "id", "originalId", "app", "appIcon", "summary", "body",
+  "image", "glyph", "execArgv", "urgency", "expireTimeout", "timestamp"
+]
+
+function historyRoles() {
+  return HISTORY_ROLES.slice()
+}
+
+// Entries are addressed by identity, never by position: a re-read between
+// rendering a list and clicking a row would otherwise fire the wrong
+// notification's action. -1 when there is no exact match.
+function historyRowIndex(rows, originalId, timestamp) {
+  if (!Array.isArray(rows)) return -1
+  var id = Number(originalId)
+  var ts = Number(timestamp)
+  if (!isFinite(id) || !isFinite(ts) || String(originalId) === "" || String(timestamp) === "") return -1
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+    if (Number(row.originalId) === id && Number(row.timestamp) === ts) return i
+  }
+  return -1
+}

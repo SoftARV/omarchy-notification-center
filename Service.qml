@@ -92,7 +92,8 @@ Item {
 
   // How many notifications the history directory keeps, and therefore how
   // many `showHistory` can replay.
-  readonly property int historyLimit: 10
+  // fork: the history depth is a setting now, default 100 -- SPEC-history-store.md
+  readonly property int historyLimit: forkState.settings.historyLimit
 
   readonly property int lowPopupDuration: 5000
   readonly property int normalPopupDuration: 8000
@@ -543,7 +544,9 @@ Item {
       String(historyLimit),
       NotificationLogic.popupFileName(row),
       popupStateDir,
-      imagesDir])
+      // fork: bump the revision once the move lands -- SPEC-history-store.md
+      imagesDir],
+      function() { forkState.noteHistoryChanged() })
   }
 
   // Record a notification that never made it to the screen (DND silenced it),
@@ -576,7 +579,11 @@ Item {
       imagesDir]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command, done)
+    // fork: silenced notifications are the ones the dot exists for -- SPEC-history-store.md
+    enqueuePopupFileJob(command, function() {
+      forkState.noteHistoryChanged()
+      if (done) done()
+    })
   }
 
   function clearHistory() {
@@ -585,7 +592,9 @@ Item {
       "  [[ -e $f ]] || continue\n" +
       "  stale=\"${f##*/}\"\n" +
       "  rm -f \"$f\" \"$2/${stale%.json}\"-*\n" +
-      "done", "--", historyDir, imagesDir])
+      // fork: history emptied, so readers re-read -- SPEC-history-store.md
+      "done", "--", historyDir, imagesDir],
+      function() { forkState.noteHistoryChanged() })
   }
 
   // A restart can kill a queued job between its cp and its JSON write,
