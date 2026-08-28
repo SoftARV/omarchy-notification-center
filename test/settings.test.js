@@ -1,9 +1,5 @@
-// Tests for the settings schema in NotificationPolicy.js.
-//
-// This file decides what every other module reads. A settings object that is
-// missing a key, or that silently turns a typo into a 500 ms toast, is a bug
-// that surfaces five modules away from here -- so the rules are pinned in
-// detail rather than sampled.
+// This schema decides what every other module reads, so a missing key or a
+// silently mangled value surfaces five modules away. Pinned in detail.
 
 var test = require("node:test")
 var assert = require("node:assert")
@@ -256,11 +252,9 @@ test("a v4 file is still readable by upstream's own parser", function() {
 
 // -------------------------------------------------- dnd presence
 
-// Upstream only assigns persisted.doNotDisturb when the file actually carried a
-// boolean `dnd`, because PersistentProperties survives an in-process QML reload
-// while the file may be absent or unreadable. Clamping turns a missing `dnd`
-// into `false`, which would silently clobber a live DND=on -- so the parse
-// result has to keep saying whether the value was really there.
+// PersistentProperties survives a QML reload while the file may be absent, and
+// clamping turns a missing dnd into false -- which would clobber a live DND=on.
+// So the parse result has to say whether the value was really there.
 test("parseSettings reports whether dnd was actually in the file", function() {
   assert.strictEqual(policy.parseSettings('{"version":4,"dnd":true}').dndPresent, true)
   assert.strictEqual(policy.parseSettings('{"version":4,"dnd":false}').dndPresent, true)

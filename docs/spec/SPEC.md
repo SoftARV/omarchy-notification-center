@@ -175,17 +175,17 @@ upstream wrote them; a stylistic tell is a merge conflict waiting to happen.
 - Two-space indent, double-quoted strings, camelCase.
 - Coerce defensively at every boundary: `String(x || "")`, `Number(x || 0)`,
   then a finiteness check. Notification content is attacker-influenced.
-- Comments explain **why**, at paragraph length, and are the dominant form of
-  documentation in this codebase. A comment restating the code is noise; a
-  comment recording the crash that motivated a guard is the point.
+- Comments explain **why**, in **three lines at most** per block, file headers
+  included. A comment restating the code is noise; a comment recording the crash
+  that motivated a guard is the point — but it earns three lines, not a page.
+  Anything longer belongs in the spec or an ADR, with the comment pointing there.
+  Enforced by `test/comments.test.js`.
 
-Real example — this is the target, taken from `NotificationLogic.js`:
+Real example — upstream's own style, trimmed to the fork's three-line limit:
 
 ```js
-// Whether a refresh has anything to write. Each property a client updates
-// emits its own signal, and the catch-up refresh after a row is inserted
-// usually finds the object exactly as it was snapshotted -- without this,
-// one update would rewrite the file several times over.
+// Whether a refresh has anything to write. Without this, one update would
+// rewrite the file several times over.
 function popupRowChanged(row, updated) {
   var current = row || {}
   var next = updated || {}

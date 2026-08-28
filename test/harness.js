@@ -1,17 +1,6 @@
-// Loads a QML JavaScript resource so node can test it.
-//
-// A QML .js resource is not a module. It declares bare functions and has no
-// export statement, because QML imports it with `import "X.js" as X` and reads
-// the declarations straight off the resulting object. require() has nothing to
-// take hold of, so instead the source runs in a fresh V8 context and the
-// declarations are read back out of it.
-//
-// This is why the pure logic in this repo lives in .js resources separate from
-// the QML that uses it: NotificationPolicy.js is testable here, and every
-// decision that can be made without a screen belongs in it. Logic that reaches
-// for a QML global (Qt, Quickshell, NotificationUrgency) cannot be loaded here
-// at all -- which is the point, and why durationFor() takes the urgency enum as
-// an argument instead of importing it.
+// Loads a QML JavaScript resource so node can test it. Such a file has no
+// exports -- QML reads the declarations off it -- so require() has nothing to
+// take hold of, and the source is wrapped in a function instead.
 
 var fs = require("node:fs")
 var path = require("node:path")
@@ -19,11 +8,8 @@ var vm = require("node:vm")
 
 var ROOT = path.join(__dirname, "..")
 
-// Top-level declarations, which is all a QML JS resource has. Anchored at
-// column 0 deliberately: QML resources are written flat, and matching indented
-// declarations would sweep up locals from inside function bodies. A top-level
-// declaration that is somehow indented simply will not be returned, and the
-// test that wanted it fails loudly on undefined rather than silently passing.
+// Anchored at column 0: QML resources are written flat, and matching indented
+// declarations would sweep up locals from inside function bodies.
 var DECLARATION = /^(?:function\s+([A-Za-z_$][\w$]*)|var\s+([A-Za-z_$][\w$]*))/gm
 
 function declarationNames(source) {
@@ -51,20 +37,9 @@ function load(resourcePath) {
   var source = fs.readFileSync(full, "utf8")
   var names = declarationNames(source)
 
-  // The source runs inside a function in THIS realm, not in a fresh vm context.
-  //
-  // A fresh context was the obvious first choice -- clean isolation, no way for
-  // a resource to touch node's globals. But every value crossing back out of it
-  // carries that realm's prototypes, so `assert.deepStrictEqual(policy.groupPopups(...), [...])`
-  // fails with "same structure but not reference-equal" on an array that is
-  // correct in every observable way. Six modules of tests assert on returned
-  // arrays and objects; making each of them work around the realm boundary
-  // would be a tax on every test to buy isolation no test needed.
-  //
-  // A function wrapper keeps the declarations out of the host global just as
-  // well, and QML-only globals (Qt, Quickshell, NotificationUrgency) are absent
-  // from node either way -- which is the property that actually matters here,
-  // and the reason durationFor() takes the urgency enum as an argument.
+  // This realm, not a fresh vm context: values crossing a context boundary
+  // carry that realm's prototypes, so deepStrictEqual fails on arrays that are
+  // correct in every observable way.
   var capture = names.map(function(name) {
     return "  declared." + name + " = typeof " + name + " !== \"undefined\" ? " + name + " : undefined"
   }).join("\n")

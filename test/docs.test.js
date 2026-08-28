@@ -1,9 +1,5 @@
-// Tests for the documentation's structure, not its prose.
-//
-// Two things rot silently in a repo's docs: a link that points at a file
-// somebody renamed, and a README that grows until nobody reads it. Both are
-// mechanically checkable, so they are checked here rather than left to whoever
-// notices.
+// Structure, not prose. A link to a renamed file and a README nobody reads are
+// both mechanically checkable.
 
 var test = require("node:test")
 var assert = require("node:assert")

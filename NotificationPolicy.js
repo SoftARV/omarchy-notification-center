@@ -1,20 +1,6 @@
-// Settings schema for the fork.
-//
-// Upstream keeps exactly one preference in ~/.local/state/omarchy/notifications.json
-// (`dnd`, at version 3). The fork needs four more knobs -- dismiss durations, the
-// visible-toast cap, same-app grouping, and how much history to keep -- so this
-// file owns version 4 of that document: what the defaults are, what each field's
-// valid range is, how an older or corrupt file becomes a complete v4 object, and
-// how it is written back.
-//
-// Upstream's NotificationLogic.parseSettings is left byte-identical and unused by
-// the fork path; this supersedes it. A v4 file is still readable by that parser --
-// it finds the `dnd` key it expects and ignores the rest -- so a user switching
-// back to the stock plugin does not lose their setting.
-//
-// Everything here is pure, and is the only part of the settings module that can
-// be unit tested. Decisions that need a running shell belong in
-// NotificationState.qml, not here.
+// Version 4 of notifications.json, superseding upstream's dnd-only parse.
+// Pure, so it is unit testable; anything needing a shell goes in
+// NotificationState.qml. See docs/spec/SPEC-settings.md.
 
 var SCHEMA_VERSION = 4
 
@@ -57,13 +43,9 @@ function defaultSettings() {
   }
 }
 
-// Out of range is not the same as invalid.
-//
-// A number past a bound is a value the user meant -- 9999 visible popups is an
-// ambition, not a typo -- so it clamps to the bound. A string, a NaN or an
-// Infinity is not a value at all, so it falls back to the default. Collapsing
-// the two would turn one bad character in a hand-edited file into a setting the
-// user never chose and cannot see.
+// Out of range is not invalid. A number past a bound is a value the user
+// meant, so it clamps; a string or NaN is not a value at all, so it falls
+// back to the default.
 function clampNumber(value, min, max, fallback) {
   if (typeof value !== "number" || !isFinite(value)) return fallback
   if (value < min) return min
@@ -101,10 +83,7 @@ function clampSettings(value) {
       out[key] = clampNumber(input[key], BOUNDS[key].min, BOUNDS[key].max, BOUNDS[key].fallback)
   }
 
-  // `version` is deliberately not read from the input. This file writes v4 and
-  // nothing else; what the document claimed to be is only interesting for
-  // deciding whether it needs rewriting, which parseSettings works out from the
-  // serialized form instead.
+  // `version` is not read from the input: this writes v4 and nothing else.
   return out
 }
 
@@ -115,22 +94,8 @@ function hasLegacyPayload(parsed) {
   return false
 }
 
-// Returns { error, errorMessage, settings, dndPresent, needsRewrite }.
-//
-// `settings` is always complete and always clamped, whatever came in -- there is
-// no input for which a consumer has to check before reading a field.
-//
-// `dndPresent` says whether the file actually carried a boolean `dnd`. Clamping
-// turns an absent one into `false`, and the service must be able to tell those
-// apart: PersistentProperties survives an in-process QML reload while the file
-// may be missing or unreadable, so hydrating a `false` that was never written
-// would silently switch do-not-disturb off under the user.
-//
-// `needsRewrite` answers "does the file on disk differ from what we would write
-// now", which covers a v3 document, a legacy payload, an out-of-range value and
-// a hand-edited whitespace change in one comparison. Deriving it from the
-// serialized form rather than from a version number is what keeps an
-// already-canonical file from being rewritten on every startup.
+// `settings` is always complete. `dndPresent` distinguishes an absent dnd from
+// a false one, so hydration cannot switch DND off under a user who had it on.
 function parseSettings(raw) {
   var text = String(raw === null || raw === undefined ? "" : raw)
   var trimmed = text.trim()
@@ -162,6 +127,9 @@ function parseSettings(raw) {
   var isObject = !!parsed && typeof parsed === "object" && !Array.isArray(parsed)
   var legacy = isObject ? hasLegacyPayload(parsed) : false
 
+  // needsRewrite compares the file against what would be written now, catching
+  // a v3 document, legacy payload, bad value or whitespace edit at once -- and
+  // leaving an already-canonical file alone on every startup.
   return {
     error: false,
     errorMessage: "",
@@ -171,13 +139,9 @@ function parseSettings(raw) {
   }
 }
 
-// Key order is fixed here rather than taken from the caller's object, so the
-// same settings always produce byte-identical output. Without that, an
-// unchanged settings object could serialize differently and trigger a file
-// write on every load.
-//
-// Two-space indent and a trailing newline match how upstream writes this file,
-// and keep it comfortable to hand-edit.
+// Key order is fixed rather than taken from the caller's object, so unchanged
+// settings always serialize identically and cannot trigger a spurious write.
+// Two-space indent and trailing newline match how upstream writes this file.
 function serializeSettings(value) {
   var s = clampSettings(value)
   return JSON.stringify({
