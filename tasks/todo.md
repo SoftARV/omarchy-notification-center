@@ -47,7 +47,7 @@ throughout, with the reason recorded in the command block so nobody re-adds it.
 
 ---
 
-## Task 2: Mark the existing fork lines and guard Service.qml
+## Task 2: Mark the existing fork lines and guard Service.qml  [DONE]
 
 **Description:** Add `// fork:` markers to the four existing hunks in
 `Service.qml` (the top-center popup change), then extend `check-delta.sh` with
@@ -62,37 +62,57 @@ Pure-deletion hunks — the removed `anchors.rightMargin` line — get a one-lin
 inside a binding.
 
 **Acceptance criteria:**
-- [ ] All four existing fork hunks in `Service.qml` carry a `// fork:` marker naming `SPEC.md`
-- [ ] The script counts **added** lines against the 60-line budget and reports the current count
-- [ ] It fails, naming the line number, on an added `Service.qml` line with no marker in its hunk
-- [ ] It fails when a marker names a spec file absent from `docs/spec/`
-- [ ] `docs/spec/SPEC-fork-seam.md` budget wording amended to "added lines" (pending open question 1)
-- [ ] No runtime behavior change: toasts still render top-center
+- [x] All **five** existing fork hunks in `Service.qml` carry a `// fork:` marker naming `SPEC.md`
+- [x] The script counts **added** lines against the 60-line budget and reports the current count
+- [x] It fails, naming the line number, on an added `Service.qml` line with no marker in its hunk
+- [x] It fails when a marker names a spec file absent from `docs/spec/`
+- [x] `docs/spec/SPEC-fork-seam.md` budget wording amended to "added lines"
+- [x] No runtime behavior change: service loads and handles notifications
 
 **Verification:**
-- [ ] `./scripts/check-delta.sh` → exits 0, prints the added-line count (expect ~11)
-- [ ] Add an unmarked line to `Service.qml` → fails with the line number; revert
-- [ ] Add a `// fork: SPEC-nonexistent.md` marker → fails naming the missing spec; revert
-- [ ] `/usr/lib/qt6/bin/qmllint Service.qml` → still 32 warnings, no new ones
-- [ ] `./install.sh && omarchy restart shell && notify-send "seam" "still centered"` → toast appears top-center as before
+- [x] `./scripts/check-delta.sh` → exits 0, reports `+14/60 added lines`
+- [x] Add an unmarked line to `Service.qml` → fails with the line number; reverted
+- [x] Add an unmarked line *directly above a marker* → fails (see bug note below)
+- [x] Add a `// fork: SPEC-nonexistent.md` marker → fails naming the missing spec; reverted
+- [x] `DELTA_BUDGET=5 ./scripts/check-delta.sh` → fails on the budget
+- [x] `/usr/lib/qt6/bin/qmllint Service.qml` → 32 warnings, warning categories identical to upstream's own file
+- [x] `./install.sh && omarchy restart shell && notify-send` → service live, popup persisted
+- [ ] **Visual**: confirm toasts still render top-center (needs a human at the screen)
+
+**Bug found and fixed during verification:** the first cut of the marker check
+asked "does this hunk contain a marker anywhere". An unmarked line placed
+directly above a marked one joined its hunk and passed — the guard reporting
+`ok` on a tree with unlabelled fork code in it. Caught by running the negative
+case against the real `Service.qml`; the fixture had missed it because its
+unmarked line was nowhere near a marker. The rule is now "the **first** added
+line of a hunk must carry the marker", with a regression test.
+
+**Documented limit:** a marker covers the contiguous added block it introduces.
+A line added directly *below* a marker is indistinguishable from a legitimate
+two-line hook, and only per-line markers would separate them — which would
+double the delta in order to police the delta. The budget check is what bounds
+a labelled block from growing. Recorded as a passing test so the limit is not
+mistaken for a guarantee.
 
 **Dependencies:** Task 1
 
-**Files likely touched:**
+**Files touched:**
 - `Service.qml`
 - `scripts/check-delta.sh`
+- `test/check-delta.test.js`
 - `docs/spec/SPEC-fork-seam.md`
+- `tasks/plan.md` (open questions resolved)
 
-**Estimated scope:** S (3 files)
+**Estimated scope:** S (5 files)
 
 ---
 
-## Checkpoint A: The guard is real
+## Checkpoint A: The guard is real  [REACHED]
 
-- [ ] `./scripts/check-delta.sh` exits 0 on a clean tree
-- [ ] Each of the four checks has been **observed to fail** when deliberately broken — a guard nobody has seen fail is not a guard
-- [ ] `git merge upstream` reports "Already up to date."
-- [ ] Notifications still work on a live shell
+- [x] `./scripts/check-delta.sh` exits 0 on a clean tree (`+14/60 added lines`)
+- [x] Each of the four checks has been **observed to fail** when deliberately broken — a guard nobody has seen fail is not a guard. Doing this is what found the marker bug.
+- [x] `git merge upstream` reports "Already up to date."
+- [x] Notifications work on a live shell; 19 tests pass
 - [ ] Review with human before proceeding
 
 ---

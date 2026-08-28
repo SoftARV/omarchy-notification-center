@@ -59,16 +59,28 @@ contiguous block is the cheapest possible conflict: git reports it once, and
 the resolution is always "take our version of the block, then port any upstream
 change into `PopupSlot.qml`".
 
-**Budget: 60 changed lines in `Service.qml`** (the seven existing plus the 25
+**Budget: 60 added lines in `Service.qml`** (the seven existing plus the 25
 above, doubled for headroom), and **zero** changed lines in `NotificationLogic.js`
 and `components/NotificationCard.qml`.
+
+Added lines, not added-plus-deleted. Hook 7 deliberately *deletes* about sixty
+upstream lines when the Repeater delegate body moves into `PopupSlot.qml`, so a
+combined count would fail the check on the one hook designed to shrink the
+conflict surface. Added lines are also the truer measure of cost: a deleted
+block is one conflict git reports once and resolves the same way every time,
+while every added line is fork code that must be re-reconciled forever.
+
+A pure-deletion hunk has no added line to carry a marker, so it gains a
+one-line `// fork:` comment saying what was removed and why. That keeps check 3
+uniform -- no unlabelled category of fork change -- and makes the deletion
+self-documenting during a merge.
 
 ### `scripts/check-delta.sh`
 
 Exits non-zero, with a readable reason, when any of these is false:
 
 1. `git diff --numstat upstream -- NotificationLogic.js components/NotificationCard.qml` is empty.
-2. Changed lines in `Service.qml` versus `upstream` are within budget.
+2. **Added** lines in `Service.qml` versus `upstream` are within budget.
 3. Every changed hunk in `Service.qml` contains a `// fork:` marker — i.e. no
    fork line is unlabelled, and no upstream line was edited by accident.
 4. Every `// fork:` marker names a spec file that exists under `docs/spec/`.
@@ -91,6 +103,10 @@ was rejected (a separate companion plugin), so the next reader does not
 re-litigate it. It is this module's job to create `docs/adr/`; `docs/spec/`
 already exists.
 
+This module also establishes `test/`: the harness that loads QML `.js`
+resources under node, and the first suite to use it. Nothing else can meet its
+Definition of Done until `node --test` runs.
+
 `README.md` stays in the root, because GitHub and a plugin user both look for
 it there. It gains a pointer to `docs/spec/CAPABILITY-MAP.md` as the index of
 what is planned, so the root stays a plugin README rather than becoming a
@@ -105,6 +121,11 @@ project plan.
   `Service.qml` without a `// fork:` marker.
 - It exits 0 with an explanatory note when the `upstream` branch does not exist.
 - `README.md` documents the sidecar rule and the amended merge procedure.
+- `test/harness.js` loads a QML `.js` resource into a node context and returns
+  its declared functions, and `node --test` runs green. Every later module's
+  Definition of Done depends on this command working, so the scaffold is this
+  module's to build -- putting it in `settings` would make that module carry
+  test infrastructure unrelated to settings.
 - `docs/adr/0001-sidecar-seam.md` records the decision and the rejected
   alternative.
 - Re-running `git merge upstream` against the already-merged omarchy 4.0.1 drop

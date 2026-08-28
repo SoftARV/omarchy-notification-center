@@ -33,7 +33,16 @@ function makeRepo() {
   fs.mkdirSync(path.join(dir, "docs", "spec"), { recursive: true })
   write(dir, "NotificationLogic.js", "function upstreamThing() {}\n")
   write(dir, "components/NotificationCard.qml", "Item { id: card }\n")
-  write(dir, "Service.qml", "Item { id: service }\n")
+  write(dir, "docs/spec/SPEC.md", "# Spec\n")
+  write(dir, "Service.qml", [
+    "Item {",
+    "  id: service",
+    "  property int a: 1",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}",
+    ""
+  ].join("\n"))
 
   git(["add", "-A"], dir)
   git(["commit", "-qm", "vendor drop"], dir)
@@ -51,10 +60,11 @@ function write(dir, rel, text) {
 
 // Run the guard and capture everything, including a non-zero exit -- which is
 // the outcome half these tests are asserting on.
-function check(dir, cwd) {
+function check(dir, cwd, env) {
   var result = cp.spawnSync("bash", [path.join(dir, "scripts", "check-delta.sh")], {
     cwd: cwd || dir,
-    encoding: "utf8"
+    encoding: "utf8",
+    env: Object.assign({}, process.env, env || {})
   })
   return {
     code: result.status,
@@ -138,4 +148,183 @@ test("fails outside a git repository", function() {
   })
   assert.notStrictEqual(r.status, 0)
   assert.match(String(r.stdout || "") + String(r.stderr || ""), /git/i)
+})
+
+
+// --------------------------------------------------------------- Service.qml
+//
+// Service.qml is upstream's file with a budgeted set of fork lines in it. The
+// guard's job there is not "did it change" -- it is meant to change -- but
+// "did it change more than agreed, and is every change labelled".
+
+// Replace a line in the fixture's Service.qml, returning the new contents.
+function editService(dir, lines) {
+  write(dir, "Service.qml", lines.join("\n") + "\n")
+}
+
+test("passes when every added Service.qml line carries a fork marker", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  // fork: centered instead of right-aligned -- SPEC.md",
+    "  property int a: 99",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.strictEqual(r.code, 0, r.out)
+})
+
+test("fails on an added Service.qml line with no fork marker", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  property int a: 99",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.notStrictEqual(r.code, 0)
+  assert.match(r.out, /Service\.qml/)
+  assert.match(r.out, /unmarked|marker/i)
+})
+
+// A hunk that only deletes upstream lines has no added line to carry a marker.
+// Exempting it would create an unlabelled category of fork change, which is the
+// exact thing this check exists to prevent -- so it must fail until a comment
+// explaining the deletion is added in its place.
+test("fails on a pure-deletion hunk with no marker comment", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  property int a: 1",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.notStrictEqual(r.code, 0)
+  assert.match(r.out, /Service\.qml/)
+})
+
+test("passes when a deletion is explained by a fork marker in its place", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  property int a: 1",
+    "  // fork: b dropped, nothing centered needs it -- SPEC.md",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.strictEqual(r.code, 0, r.out)
+})
+
+test("fails when a fork marker names a spec file that does not exist", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  // fork: explained somewhere else -- SPEC-nonexistent.md",
+    "  property int a: 99",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.notStrictEqual(r.code, 0)
+  assert.match(r.out, /SPEC-nonexistent\.md/)
+})
+
+test("fails when added lines exceed the budget", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  // fork: three new bindings -- SPEC.md",
+    "  property int x: 1",
+    "  property int y: 2",
+    "  property int a: 1",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir, null, { DELTA_BUDGET: "2" })
+  assert.notStrictEqual(r.code, 0)
+  assert.match(r.out, /budget/i)
+})
+
+// Deleting is how the seam shrinks the conflict surface -- hook 7 moves ~60
+// upstream lines out of the delegate. A budget counting deletions would fail
+// the one change designed to make merges cheaper.
+test("deletions do not count against the budget", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  // fork: delegate body moved to a sidecar -- SPEC.md",
+    "}"
+  ])
+  var r = check(dir, null, { DELTA_BUDGET: "2" })
+  assert.strictEqual(r.code, 0, r.out)
+})
+
+test("reports the added-line count on a passing run", function() {
+  var dir = makeRepo()
+  var r = check(dir)
+  assert.strictEqual(r.code, 0, r.out)
+  assert.match(r.out, /\b0\b/)
+})
+
+// Regression. The first cut of check 3 asked "does this hunk contain a marker
+// anywhere", and an unmarked line placed directly above a marked one was
+// absorbed into the same hunk and sailed through -- the guard reporting ok on
+// a tree with unlabelled fork code in it. Found by running the negative case
+// against the real Service.qml, which the fixture had not reproduced because
+// its unmarked line was nowhere near a marker.
+//
+// The rule is now: the FIRST added line of a hunk must carry the marker.
+test("fails on an unmarked line sitting directly above a marked one", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  property int sneaked: 1",
+    "  // fork: centered instead of right-aligned -- SPEC.md",
+    "  property int a: 99",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.notStrictEqual(r.code, 0, "unmarked line escaped: " + r.out)
+  assert.match(r.out, /Service\.qml/)
+})
+
+// The limit of the check, stated as a test so nobody mistakes it for a
+// guarantee it does not make: a marker covers the contiguous block of added
+// lines it introduces. A line added *below* a marker is indistinguishable from
+// a legitimate two-line hook, and no amount of parsing separates them -- only
+// per-line markers would, and that would double the delta to police the delta.
+// What bounds a labelled block from growing without limit is the budget check,
+// not this one.
+test("a marker covers the added block it introduces (documented limit)", function() {
+  var dir = makeRepo()
+  editService(dir, [
+    "Item {",
+    "  id: service",
+    "  // fork: centered instead of right-aligned -- SPEC.md",
+    "  property int a: 99",
+    "  property int alsoCovered: 1",
+    "  property int b: 2",
+    "  property int c: 3",
+    "}"
+  ])
+  var r = check(dir)
+  assert.strictEqual(r.code, 0, r.out)
 })

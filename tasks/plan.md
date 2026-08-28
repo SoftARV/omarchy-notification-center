@@ -115,17 +115,17 @@ Tasks and checkpoints are recorded in `tasks/todo.md`.
 
 ## Open Questions
 
-1. **Amend the budget wording to "added lines"?** `SPEC-fork-seam.md` currently
-   says "60 changed lines". As written, hook 7 fails the check it was designed
-   to satisfy. I plan to implement "added lines" and amend the spec sentence to
-   match. Say if you would rather keep added + deleted and raise the number.
-2. **Accept the test scaffold as a `fork-seam` deliverable?** It is not in the
-   module's stated acceptance criteria. The alternative is deferring it to
-   `settings`. I recommend here, for the reason in Architecture Decisions, and
-   will add one AC line to the spec.
-3. **Is a `qmllint` comparison script wanted?** `SPEC.md` requires "qmllint
-   reports nothing upstream does not also report" for every module, but nothing
-   automates that comparison — today it is an eyeball against 32 warnings. A
-   `scripts/check-lint.sh` diffing our warnings against upstream's would make it
-   real. It is **not** in `SPEC-fork-seam.md`, so I have left it out rather than
-   widening scope unasked. Say the word and it becomes Task 6.
+All three resolved 2026-08-28. Kept here rather than deleted, so the reasoning
+survives for whoever reads this after the fact.
+
+1. **Amend the budget wording to "added lines"?** — **Yes.** `SPEC-fork-seam.md`
+   now says "60 added lines", with the reasoning recorded there: hook 7
+   deliberately deletes ~60 upstream lines, so a combined count would fail the
+   check on the one hook designed to shrink the conflict surface.
+2. **Accept the test scaffold as a `fork-seam` deliverable?** — **Yes.** Added
+   as an acceptance criterion in `SPEC-fork-seam.md`. Task 3 stands.
+3. **Is a `qmllint` comparison script wanted?** — **No.** Not built. The
+   `SPEC.md` rule ("qmllint reports nothing upstream does not also report")
+   stays a manual comparison against the ~32 import warnings. Recording the
+   consequence honestly: that line of the Definition of Done is eyeballed, not
+   enforced, and it is the one gate in this project with no tooling behind it.

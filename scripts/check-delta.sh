@@ -72,8 +72,96 @@ for file in "${VERBATIM[@]}"; do
   fi
 done
 
+# ------------------------------------------------------------- checks 2-4
+#
+# Service.qml is upstream's file that the fork IS allowed to change -- it is
+# where the hooks live. So the question here is not "did it change", it is
+# "did it change more than agreed, and is every change labelled".
+#
+# Labelling is what makes a merge conflict readable a year from now. Landing in
+# a conflict on an unmarked line means reconstructing intent from the diff;
+# landing on a `// fork:` line means reading why it is there.
+SEAM="Service.qml"
+BUDGET=${DELTA_BUDGET:-60}
+SPEC_DIR="docs/spec"
+MARKER="// fork:"
+
+if [[ ! -f $SEAM ]]; then
+  fail "$SEAM is missing"
+elif git rev-parse --verify --quiet "$UPSTREAM:$SEAM" >/dev/null 2>&1; then
+
+  # Added lines only. Hook 7 deliberately deletes ~60 upstream lines when the
+  # Repeater delegate body moves into a sidecar, so counting deletions would
+  # fail the one change designed to make merges cheaper. Added lines are the
+  # truer cost anyway: a deleted block is one conflict resolved the same way
+  # every time, while every added line is fork code re-reconciled forever.
+  added=$(git diff --numstat "$UPSTREAM" -- "$SEAM" 2>/dev/null | awk 'NR==1{print $1}')
+  added=${added:-0}
+  [[ $added == "-" ]] && added=0   # binary; cannot happen here, but do not treat as huge
+
+  if (( added > BUDGET )); then
+    fail "$SEAM adds $added lines over $UPSTREAM, past the $BUDGET-line budget." \
+      "A hook needing more than a few lines is logic that belongs in a sidecar file." \
+      "If the hook is genuinely necessary, amend the inventory in" \
+      "$SPEC_DIR/SPEC-fork-seam.md in the same commit -- do not just raise this number."
+  fi
+
+  # The FIRST added line of every hunk must carry the marker -- not merely some
+  # line in the hunk. Asking only "is there a marker in here somewhere" lets an
+  # unmarked line placed directly above a marked one join its hunk and sail
+  # through, which is how the first version of this check reported ok on a tree
+  # with unlabelled fork code in it.
+  #
+  # A marker covers the contiguous added block it introduces; what stops such a
+  # block growing without limit is the budget check, not this one.
+  #
+  # A hunk that only deletes has no added line at all, so it fails until a
+  # comment explaining the deletion is put in its place. That is deliberate: an
+  # exemption would create an unlabelled category of fork change, which is the
+  # exact thing this check exists to prevent.
+  unmarked=$(git diff -U0 "$UPSTREAM" -- "$SEAM" 2>/dev/null | awk -v marker="$MARKER" '
+    function flush() { if (start != "" && !ok) print start }
+    /^\+\+\+/ { next }
+    /^@@/ {
+      flush()
+      match($0, /\+[0-9]+/)
+      start = substr($0, RSTART + 1, RLENGTH - 1)
+      ok = 0
+      seen = 0
+      next
+    }
+    /^\+/ {
+      if (!seen) { seen = 1; ok = (index($0, marker) > 0) }
+      next
+    }
+    END { flush() }
+  ')
+
+  if [[ -n $unmarked ]]; then
+    for line in $unmarked; do
+      fail "$SEAM:$line is fork code with no \"$MARKER\" marker in its hunk." \
+        "Put a marker line above it saying why the fork needs it, naming its spec." \
+        "A deletion counts too: replace the removed line with a marker comment."
+    done
+  fi
+fi
+
+# Markers point at the spec that justifies them. A marker naming a spec that no
+# longer exists is worse than no marker -- it reads as an explanation and then
+# leads nowhere.
+if [[ -f $SEAM ]]; then
+  while read -r ref; do
+    [[ -n $ref ]] || continue
+    [[ -f "$SPEC_DIR/$ref" ]] || fail \
+      "$SEAM has a $MARKER marker naming $ref, which is not in $SPEC_DIR/" \
+      "Either the spec was renamed and the marker was not, or the marker is a typo."
+  done < <(grep -h -- "$MARKER" "$SEAM" 2>/dev/null |
+    grep -oE 'SPEC[A-Za-z0-9._-]*\.md' | sort -u)
+fi
+
 if (( status == 0 )); then
-  printf 'check-delta: ok -- %d upstream files verbatim\n' "${#VERBATIM[@]}"
+  printf 'check-delta: ok -- %d upstream files verbatim, %s +%s/%s added lines\n' \
+    "${#VERBATIM[@]}" "$SEAM" "${added:-0}" "$BUDGET"
 fi
 
 exit "$status"
