@@ -1,6 +1,7 @@
 # Spec: popup-cap
 
-Module id `popup-cap`. Depends on `settings` and `stacking`.
+Module id `popup-cap`. Depends on `settings`. Written to depend on `stacking`,
+**built before it** — see "Built ahead of stacking" below.
 
 ## Objective
 
@@ -13,10 +14,30 @@ evicted to history when a new one arrives over the limit.
 ### The unit is a slot, not a row
 
 With grouping on, a slot is a deck; six Discord pings are one slot. With
-grouping off, a slot is a row. This is why the module depends on `stacking` —
-capping raw rows would put a cap of 4 nowhere near four cards of screen space.
+grouping off, a slot is a row. Capping raw rows would put a cap of 4 nowhere
+near four cards of screen space, which is why the final semantics need
+`stacking`.
 
-`forkState.slotCount` is `forkState.groups.length`.
+`forkState.slotCount` is the interface. Until `stacking` lands it is
+`popupModel.count` — one row, one slot — and the two are identical, because
+without grouping every row *is* its own card.
+
+### Built ahead of stacking
+
+The capability map orders `stacking` first. It was built second instead, so this
+module ships its value earlier and `stacking` inherits a working cap rather than
+having to grow one.
+
+The cost is a known, recorded follow-up rather than a surprise. When `stacking`
+lands it must:
+
+1. redefine `forkState.slotCount` as `forkState.groups.length`, and
+2. make eviction remove **every row of the chosen group**, not a single row.
+
+The eviction selector returns a *list* of row identities precisely so that
+change is a change of selector, not of mechanism. `SPEC-stacking.md` carries
+both items as acceptance criteria; without them a deck of six pings would count
+as six slots and the cap would shred it.
 
 ### Eviction
 
@@ -49,8 +70,21 @@ Because the cap runs on every insert, the replay is bounded automatically: it
 appends rows and the cap trims to `maxVisiblePopups` slots. No new knob, no
 change to what the keybind does. See open question 2 in `SPEC.md`.
 
-`Service.qml` change is hook 6 alone: one call after the insert in
-`handleNotification`, plus the same call after a replay appends.
+### No `Service.qml` hook at all
+
+The spec originally placed a call after the insert in `handleNotification`, and
+another after a replay appends — and a third would have been needed after the
+restore batch.
+
+None is necessary. `popupModel` is exposed as `service.popupModel`, so the
+sidecar watches its `count` and enforces the cap whenever it rises. That covers
+arrival, replay and restore through one mechanism, and spends **zero** of the
+hook budget. Hook 6 is released back.
+
+The watcher defers through `Qt.callLater`, matching the discipline upstream
+already applies to model mutation: reacting synchronously to `countChanged`
+would re-enter a model mid-mutation, which is what upstream's own
+`Qt.callLater` comment warns about.
 
 ### Interaction with restore
 
@@ -62,12 +96,13 @@ what a user expects to come back to.
 
 ## Acceptance Criteria
 
-- With `maxVisiblePopups: 3` and grouping on, twenty notifications from five
-  apps leave three decks on screen.
-- With grouping off, the same burst leaves three cards.
+- With `maxVisiblePopups: 3`, twenty notifications from five apps leave three
+  cards on screen.
+- *(Deferred to `stacking`: the same burst with grouping on leaves three decks.)*
 - The evicted notification is present in history immediately after eviction.
 - Eviction removes the oldest slot, never the newest.
-- A deck still receiving new members is not evicted before an older idle deck.
+- *(Deferred to `stacking`: a deck still receiving new members is not evicted
+  before an older idle deck.)*
 - Criticals are never evicted; a screen of four criticals with a cap of 3 keeps
   all four and evicts nothing.
 - `showHistory` with `historyLimit: 100` leaves at most `maxVisiblePopups` slots
@@ -80,11 +115,11 @@ what a user expects to come back to.
 ## Verification
 
 ```sh
-node --test test/popup-cap.test.js    # slot selection, critical exemption, ordering
-omarchy-shell notifications setMaxVisible 3
+node --test "test/**/*.test.js"       # slot selection, critical exemption, ordering
+omarchy-shell notification-settings setMaxVisible 3
 ./scripts/smoke.sh                    # count slots; check history for the evicted
 for i in $(seq 1 6); do notify-send -u critical "crit $i"; done   # none evicted
-omarchy-shell notifications setMaxVisible 1                       # evicts live
+omarchy-shell notification-settings setMaxVisible 1               # evicts live
 ls ~/.local/state/omarchy/notifications/*.json                    # no orphans
 ```
 

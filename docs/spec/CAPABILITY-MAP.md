@@ -14,7 +14,15 @@ mid-initiative, because specs, plans and task lists select work by them.
 | `history-store` | Observable history model for readers, configurable limit, clear, unread count | `settings` |
 | `center-ui` | Bar widget (bell + unread count) and dropdown panel: history list, clear, settings controls | `history-store`, `settings` |
 
-**Build order:** `fork-seam` → `settings` → {`timing`, `stacking`, `history-store`} → {`popup-cap`, `center-ui`}
+**Planned build order:** `fork-seam` → `settings` → {`timing`, `stacking`, `history-store`} → {`popup-cap`, `center-ui`}
+
+**Actual build order:** `fork-seam` → `settings` → `timing` → `history-store` →
+`popup-cap` → `stacking` → `center-ui`.
+
+`popup-cap` was built before `stacking` so its value shipped earlier. The
+dependency did not vanish: it became an interface. `forkState.slotCount` is
+`popupModel.count` today and `groups.length` once `stacking` lands, and
+`SPEC-stacking.md` carries the change as an acceptance criterion.
 
 Braces mark work that can proceed in parallel once its dependency lands.
 

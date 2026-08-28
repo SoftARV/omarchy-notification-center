@@ -333,11 +333,11 @@ The initiative is done when all of the following hold on a live shell:
    an app that can overrule it. Every sender observed on the development machine
    requests no timeout at all, so the two rules are indistinguishable in practice.
    Consequence: `maxPopupDurationMs` is now vestigial — see `SPEC-timing.md`.
-2. **What should `showHistory` do now that a center exists?** Today it replays
-   history as toasts. With `historyLimit` at 100 that would be absurd, so
-   `popup-cap` bounds the replay automatically and the behavior stays. The
-   alternative is repointing the keybind at the center panel, which is nicer
-   but changes what an existing keybind does. Left as-is pending your call.
+2. ~~**What should `showHistory` do now that a center exists?**~~ **Resolved by
+   `popup-cap`:** the cap bounds the replay automatically, so the keybind keeps
+   doing what it always did and no new knob is needed. Repointing it at the
+   center panel remains possible later, but it would change what an existing
+   keybind does, and nothing forces that.
 3. **Should the delta budget be enforced or advisory?** `check-delta.sh` exits
    non-zero over budget. There is no CI here, so it is only as binding as the
    habit of running it. A `pre-commit` hook would make it real; that is a
