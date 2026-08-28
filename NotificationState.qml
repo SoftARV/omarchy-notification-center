@@ -41,9 +41,8 @@ Item {
   property alias historyModel: historyModel
   ListModel { id: historyModel }
 
-  // Its own process, not the service's file queue: that queue's Process has no
-  // StdioCollector and cannot carry output. Racing a write is self-healing --
-  // mv is atomic, torn files are skipped, and a revision bump prompts a re-read.
+  // Its own process: the service's file queue has no StdioCollector and cannot
+  // carry output. Racing a write is self-healing -- a revision bump re-reads.
   Process {
     id: historyReadProc
     running: false
@@ -66,13 +65,38 @@ Item {
     var rows = Logic.historyRows(raw, [], NotificationUrgency.Normal, root.settings.historyLimit)
     historyModel.clear()
     for (var i = 0; i < rows.length; i++) historyModel.append(rows[i])
+    // Rows are newest-first, so the first one dates the whole history.
+    root.newestHistoryTimestamp = rows.length > 0 ? Number(rows[0].timestamp || 0) : 0
   }
 
-  // Plain objects copied role by role: a ListModel element is not something
-  // JSON.stringify can serialise directly.
+  // Bumped whenever a history file is created or removed. Readers compare it
+  // against the revision they rendered and re-read when it moves.
+  property int historyRevision: 0
+
+  // The newest entry's timestamp, kept as its own property so hasUnread has
+  // something notifiable to bind to -- a ListModel's rows are not.
+  property double newestHistoryTimestamp: 0
+
+  // A dot, not a count: the useful signal is that there is something to look
+  // at, and the list itself says how much.
+  readonly property bool hasUnread:
+    root.newestHistoryTimestamp > Number(root.settings.historyLastSeen || 0)
+
+  // Called by the service whenever a history file appears or disappears.
+  function noteHistoryChanged() {
+    root.historyRevision += 1
+    root.loadHistory()
+  }
+
+  function markHistorySeen() {
+    root.applySetting("historyLastSeen", Date.now())
+  }
+
   // After the service has had a tick to create its directories.
   Component.onCompleted: Qt.callLater(root.loadHistory)
 
+  // Plain objects copied role by role: a ListModel element is not something
+  // JSON.stringify can serialise directly.
   function historyAsArray() {
     var roles = Policy.historyRoles()
     var out = []
@@ -143,6 +167,19 @@ Item {
     function reload(): string {
       root.loadHistory()
       return "ok"
+    }
+
+    function unread(): string {
+      return root.hasUnread ? "yes" : "no"
+    }
+
+    function markSeen(): string {
+      root.markHistorySeen()
+      return "ok"
+    }
+
+    function revision(): string {
+      return String(root.historyRevision)
     }
   }
 

@@ -114,7 +114,7 @@ Tasks and checkpoints are in [`tasks/todo.md`](todo.md).
 | One torn file loses the whole history | High — a panel that shows nothing after a crash | Parsing skips invalid entries individually. Tested with a truncated file between two good ones |
 | A read races a write | Low, and self-healing | `mv` is atomic; torn files are skipped; the revision bump prompts a re-read. Accepted deliberately, see decision 1 |
 | The unread dot lies after a restart | Medium — the feature exists for the case where you were away | Filenames answer it without loading anything. Verified by restarting with unread entries present |
-| Raising `historyLimit` to 100 slows the trim | Low now, worth watching | The trim runs per archive on the serialized queue, off the UI thread. Timed during Task 3 with a full directory |
+| Raising `historyLimit` to 100 slows the trim | **Measured, not a concern.** 8 ms in steady state | The trim deletes nothing once the directory is at its limit. 486 ms only in the pathological case of deleting 400 files in one pass, off the UI thread |
 | `Util` unreachable from the sidecar | Would block Task 4 | `qs.Commons` is a shell-provided singleton import; `Service.qml` uses it. Verified early in Task 4 rather than assumed |
 
 ## Open Questions

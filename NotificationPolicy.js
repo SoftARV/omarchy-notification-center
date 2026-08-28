@@ -253,31 +253,6 @@ function durationFor(urgency, settings, urgencyEnum) {
 
 // ------------------------------------------------------------------ history
 
-// History files are named <timestamp>-<id>.json, so whether anything arrived
-// since the last look is answered by the names alone -- no file opened, nothing
-// held in memory, and correct immediately after a restart.
-function timestampFromFileName(name) {
-  var text = String(name === null || name === undefined ? "" : name)
-  var digits = /^(\d+)-/.exec(text)
-  if (!digits) return null
-  var n = Number(digits[1])
-  return isFinite(n) ? n : null
-}
-
-// True if any history file is newer than lastSeen. An unusable lastSeen counts
-// everything as unread: failing dark would hide the notifications the indicator
-// exists to report.
-function hasUnreadIn(fileNames, lastSeen) {
-  if (!Array.isArray(fileNames) || fileNames.length === 0) return false
-  var seen = typeof lastSeen === "number" && isFinite(lastSeen) && lastSeen >= 0 ? lastSeen : -1
-
-  for (var i = 0; i < fileNames.length; i++) {
-    var ts = timestampFromFileName(fileNames[i])
-    if (ts !== null && ts > seen) return true
-  }
-  return false
-}
-
 // Every field a history row carries. The IPC serialiser copies role by role, so
 // this list drifting from what historyRows produces would drop fields silently.
 var HISTORY_ROLES = [

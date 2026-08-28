@@ -93,60 +93,6 @@ test("real history files on this machine parse", function() {
   }
 })
 
-// ----------------------------------------------------- the unread predicate
-
-// History files are named <timestamp>-<id>.json, so "is anything newer than
-// the last look" is answered without opening a single file.
-test("hasUnreadIn is true when a filename timestamp beats lastSeen", function() {
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], 1000), true)
-  assert.strictEqual(policy.hasUnreadIn(["500-1.json", "2000-2.json"], 1000), true)
-  assert.strictEqual(policy.hasUnreadIn(["1787931019798-18.json"], 0), true)
-})
-
-test("hasUnreadIn is false when nothing is newer", function() {
-  assert.strictEqual(policy.hasUnreadIn(["500-1.json"], 1000), false)
-  assert.strictEqual(policy.hasUnreadIn(["1000-1.json"], 1000), false, "equal is not newer")
-  assert.strictEqual(policy.hasUnreadIn([], 1000), false)
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], 9999999999999), false, "lastSeen in the future")
-})
-
-test("hasUnreadIn ignores names it cannot read as a timestamp", function() {
-  assert.strictEqual(policy.hasUnreadIn(["bad.json", "notatimestamp-1.json", ""], 0), false)
-  assert.strictEqual(policy.hasUnreadIn(["-1.json"], 0), false)
-  assert.strictEqual(policy.hasUnreadIn([".json"], 0), false)
-  // A good name alongside unreadable ones still counts.
-  assert.strictEqual(policy.hasUnreadIn(["bad.json", "2000-1.json"], 1000), true)
-})
-
-test("hasUnreadIn never throws, whatever it is handed", function() {
-  var inputs = [null, undefined, "string", 42, {}, [null], [undefined], [{}], [[]], ["x"]]
-  var seens = [0, 1000, null, undefined, NaN, Infinity, -1, "1000", {}]
-  inputs.forEach(function(names) {
-    seens.forEach(function(seen) {
-      var r = policy.hasUnreadIn(names, seen)
-      assert.strictEqual(typeof r, "boolean",
-        "for " + JSON.stringify(names) + " / " + String(seen))
-    })
-  })
-})
-
-// A missing or unusable lastSeen must mean "everything is unread", not
-// "nothing is" -- failing dark would hide the notifications this exists for.
-test("an unusable lastSeen treats existing history as unread", function() {
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], null), true)
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], undefined), true)
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], NaN), true)
-  assert.strictEqual(policy.hasUnreadIn(["2000-1.json"], "nonsense"), true)
-})
-
-test("hasUnreadIn short-circuits on the first newer file", function() {
-  var names = ["9999-1.json"]
-  for (var i = 0; i < 5000; i++) names.push("1-" + i + ".json")
-  var t0 = Date.now()
-  assert.strictEqual(policy.hasUnreadIn(names, 100), true)
-  assert.ok(Date.now() - t0 < 50, "should not scan the whole list")
-})
-
 // ---------------------------------------------------------------- roles
 
 // The IPC serialiser copies rows role by role. If that list and what

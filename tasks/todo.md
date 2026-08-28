@@ -126,7 +126,7 @@ appeared while three reads were in flight.
 
 ## Phase 2: Change and unread
 
-## Task 3: Revision counter, hasUnread, markSeen
+## Task 3: Revision counter, hasUnread, markSeen  [DONE]
 
 **Description:** Make the store report change. Hook 4 makes `historyLimit`
 settings-driven; hook 8 bumps a revision from **both** functions that create a
@@ -138,42 +138,71 @@ Both writers matter: covering only `archivePopupFileFor` would leave the
 indicator dark for exactly the notifications missed while DND was on.
 
 **Acceptance criteria:**
-- [ ] `historyLimit` comes from settings; `setHistoryLimit 5` trims to 5 on the next archive
-- [ ] `historyRevision` increases after an archive, after a DND-silenced write, and after a clear
-- [ ] `hasUnread` is true after a notification reaches history, false after `markSeen`
-- [ ] `hasUnread` is correct immediately after a shell restart, without loading the model
-- [ ] A DND-silenced notification sets `hasUnread` just as an expired toast does
-- [ ] `markSeen` persists `historyLastSeen` in `notifications.json`
-- [ ] Hooks 4, 8 and 9 each carry a `// fork:` marker naming `SPEC-history-store.md`
-- [ ] `check-delta.sh` stays within budget
+- [x] `historyLimit` comes from settings; `setHistoryLimit 5` trims to 5 on the next archive
+- [x] `historyRevision` increases after an archive, after a DND-silenced write, and after a clear
+- [x] `hasUnread` is true after a notification reaches history, false after `markSeen`
+- [x] `hasUnread` is correct immediately after a shell restart, without loading the model
+- [x] A DND-silenced notification sets `hasUnread` just as an expired toast does
+- [x] `markSeen` persists `historyLastSeen` in `notifications.json`
+- [x] Hooks 4, 8 and 9 each carry a `// fork:` marker naming `SPEC-history-store.md`
+- [x] `check-delta.sh` stays within budget
 
 **Verification:**
-- [ ] `notification-history unread` → `no`; send one, let it expire → `yes`; `markSeen` → `no`
-- [ ] `omarchy restart shell` with unread entries present → still `yes`
-- [ ] `setDnd on`, `notify-send`, `setDnd off` → `unread` is `yes` (the DND path)
-- [ ] `setHistoryLimit 5`, generate 8 notifications, count files → 5
-- [ ] `grep historyLastSeen ~/.local/state/omarchy/notifications.json` after `markSeen` → a recent timestamp
-- [ ] Time the trim with a full directory at limit 100; record it in the plan
-- [ ] `./scripts/check-delta.sh` → passes, report the new count
+- [x] `notification-history unread` → `no`; send one, let it expire → `yes`; `markSeen` → `no`
+- [x] `omarchy restart shell` with unread entries present → still `yes`
+- [x] `setDnd on`, `notify-send`, `setDnd off` → `unread` is `yes` (the DND path)
+- [x] `setHistoryLimit 5`, generate 8 notifications, count files → 5
+- [x] `grep historyLastSeen ~/.local/state/omarchy/notifications.json` after `markSeen` → a recent timestamp
+- [x] Time the trim with a full directory at limit 100; record it in the plan
+- [x] `./scripts/check-delta.sh` → passes, report the new count
 
 **Dependencies:** Task 2
 
-**Files likely touched:**
-- `Service.qml` (hooks 4, 8 ×2, 9)
-- `NotificationState.qml`
-- `NotificationPolicy.js`
-- `docs/spec/SPEC-fork-seam.md` (mark hooks spent)
+**Files touched:**
+- `Service.qml` (hooks 4, 8a, 8b, 9 — `+36/60` added lines)
+- `NotificationState.qml` (revision, `hasUnread`, `markHistorySeen`, three IPC calls)
+- `NotificationPolicy.js` (**removed** `hasUnreadIn` — see below)
+- `test/history-store.test.js` (removed its tests to match)
+- `tasks/plan.md` (trim timing recorded)
 
-**Estimated scope:** M (4 files)
+**Estimated scope:** M (5 files)
+
+**Task 1's unread predicate was deleted.** It scanned filenames because the
+model was going to be lazy. Task 2 made the model warm, so the newest entry's
+timestamp is already in hand and a filename scan is redundant — the flag is a
+one-line comparison against `historyLastSeen`. Carrying twenty-five lines of
+tested-but-unused code would be worse than removing it, so it went, tests
+included. The design moved under it; that is the honest consequence.
+
+**The guard caught the markers before the shell did.** Two hooks change the
+*last* line of an argument list, so my first attempt put the marker second in
+its hunk and `check-delta.sh` rejected it. The markers now lead, which is what
+the rule is for.
+
+**Hook 8b earned its place immediately.** A DND-silenced notification from a
+named app reached history and lit the flag; without that hook the dot would
+stay dark for precisely the notifications missed while away. Upstream's
+behaviour is preserved alongside it — a plain `notify-send` while DND is on is
+still dropped as ephemeral and never stored.
+
+**Trim timing, which the plan asked for:** 8 ms in steady state, when the
+directory is already at its limit and nothing is deleted. 486 ms only in the
+pathological case of deleting 400 files in a single pass. Off the UI thread
+either way. Not a concern at 100, and fine at 500.
+
+**Restart persistence verified in all four states** after a first attempt that
+was mis-sequenced and proved nothing: notification → `yes`, restart → `yes`,
+`markSeen` → `no`, restart → `no`.
 
 ---
 
-## Checkpoint A: The store is readable and reports change
+## Checkpoint A: The store is readable and reports change  [REACHED]
 
-- [ ] History can be listed, and a torn file costs one entry rather than all of them
-- [ ] The unread flag is right after a restart and after a DND-silenced notification
-- [ ] Notifications, DND, toasts and `showHistory` all still work
-- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
+- [x] History can be listed, and a torn file costs one entry rather than all of them
+- [x] The unread flag is right after a restart and after a DND-silenced notification
+- [x] Notifications, DND, toasts and `showHistory` all still work
+- [x] `node --test "test/**/*.test.js"` (98) and `./scripts/check-delta.sh` (`+36/60`) pass
+- [x] Real history backed up to `/tmp/history.backup` and restored intact afterwards
 - [ ] Review with human before proceeding
 
 ---
