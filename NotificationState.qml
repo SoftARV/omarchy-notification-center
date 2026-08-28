@@ -5,6 +5,7 @@
 import QtQuick
 import Quickshell.Io
 import Quickshell.Services.Notifications
+import qs.Commons
 import "NotificationPolicy.js" as Policy
 import "NotificationLogic.js" as Logic
 
@@ -86,6 +87,29 @@ Item {
   function noteHistoryChanged() {
     root.historyRevision += 1
     root.loadHistory()
+  }
+
+  // Hook 9 bumps the revision when the clear job lands, which re-reads and
+  // empties the model. markHistorySeen darkens the dot straight away rather
+  // than leaving it lit over an empty list.
+  function clearHistory() {
+    if (!root.service) return
+    root.service.clearHistory()
+    root.markHistorySeen()
+  }
+
+  // Attacker-influenced input ending in process execution: the argv is validated
+  // by upstream's fail-closed parser and passed as argv, never as a string.
+  // No live sender, so an entry without a valid execArgv does nothing at all.
+  function invokeHistoryEntry(originalId, timestamp) {
+    var index = Policy.historyRowIndex(root.historyAsArray(), originalId, timestamp)
+    if (index < 0) return false
+
+    var argv = Logic.parseExecArgv(historyModel.get(index).execArgv || "")
+    if (!argv) return false
+
+    Util.execArgv(argv)
+    return true
   }
 
   function markHistorySeen() {
@@ -180,6 +204,15 @@ Item {
 
     function revision(): string {
       return String(root.historyRevision)
+    }
+
+    function clear(): string {
+      root.clearHistory()
+      return "ok"
+    }
+
+    function invoke(originalId: string, timestamp: string): string {
+      return root.invokeHistoryEntry(originalId, timestamp) ? "ok" : "none"
     }
   }
 

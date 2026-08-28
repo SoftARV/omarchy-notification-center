@@ -118,3 +118,68 @@ test("historyRoles hands out a fresh array", function() {
   a.push("tampered")
   assert.strictEqual(policy.historyRoles().indexOf("tampered"), -1)
 })
+
+// ------------------------------------------------------- invoking an entry
+
+// Entries are addressed by identity, never by position: a list re-read between
+// rendering and clicking would otherwise fire the wrong notification's action.
+test("historyRowIndex finds a row by originalId and timestamp", function() {
+  var rows = [
+    { originalId: 7, timestamp: 3000 },
+    { originalId: 2, timestamp: 2000 },
+    { originalId: 7, timestamp: 1000 }
+  ]
+  assert.strictEqual(policy.historyRowIndex(rows, 7, 3000), 0)
+  assert.strictEqual(policy.historyRowIndex(rows, 2, 2000), 1)
+  assert.strictEqual(policy.historyRowIndex(rows, 7, 1000), 2, "same id, different timestamp")
+})
+
+test("historyRowIndex returns -1 rather than guessing", function() {
+  var rows = [{ originalId: 7, timestamp: 3000 }]
+  assert.strictEqual(policy.historyRowIndex(rows, 7, 9999), -1, "right id, wrong timestamp")
+  assert.strictEqual(policy.historyRowIndex(rows, 9, 3000), -1, "wrong id, right timestamp")
+  assert.strictEqual(policy.historyRowIndex(rows, 999, 999), -1)
+  assert.strictEqual(policy.historyRowIndex([], 7, 3000), -1)
+  assert.strictEqual(policy.historyRowIndex(null, 7, 3000), -1)
+})
+
+// IPC hands both values over as strings.
+test("historyRowIndex accepts string arguments from the shell", function() {
+  var rows = [{ originalId: 7, timestamp: 3000 }]
+  assert.strictEqual(policy.historyRowIndex(rows, "7", "3000"), 0)
+  assert.strictEqual(policy.historyRowIndex(rows, "abc", "3000"), -1)
+  assert.strictEqual(policy.historyRowIndex(rows, "7", ""), -1)
+})
+
+test("historyRowIndex never throws on malformed rows", function() {
+  ;[[null], [undefined], [{}], ["x"], [[]], [{ originalId: null }]].forEach(function(rows) {
+    assert.strictEqual(typeof policy.historyRowIndex(rows, 1, 1), "number")
+  })
+})
+
+// The one path in this project that ends in process execution. A notification
+// body is attacker-influenced, so the validation must fail closed.
+test("a stored execArgv is refused unless it is a well-formed argv", function() {
+  var refused = [
+    '["-rf"]',                    // a leading dash would be read as an option
+    '"just a string"',            // not an array
+    "[]",                         // empty
+    '["sh", 2]',                  // a non-string element
+    '[""]',                       // empty program
+    "not json at all",
+    "",
+    null,
+    undefined,
+    '{"cmd":"rm"}'                // an object, not an array
+  ]
+  refused.forEach(function(value) {
+    assert.strictEqual(logic.parseExecArgv(value), null, "should refuse: " + String(value))
+  })
+})
+
+test("a well-formed argv survives verbatim, with no shell interpretation", function() {
+  // Every one of these would be dangerous if the argv were joined into a shell
+  // string. Util.execArgv passes them as positional parameters instead.
+  var hostile = ["notify-send", "$(whoami)", "`id`", "; rm -rf /tmp/x", "a b\nc", "*"]
+  assert.deepStrictEqual(logic.parseExecArgv(JSON.stringify(hostile)), hostile)
+})

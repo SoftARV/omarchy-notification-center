@@ -209,7 +209,7 @@ was mis-sequenced and proved nothing: notification → `yes`, restart → `yes`,
 
 ## Phase 3: Acting on an entry
 
-## Task 4: `clear` and `invoke`
+## Task 4: `clear` and `invoke`  [DONE]
 
 **Description:** Wrap `clearHistory()` so the model, the directory, the images
 and the unread flag empty together, and add `invokeHistoryEntry` to run an
@@ -222,19 +222,19 @@ attacker-influenced and this ends in process execution. It reuses
 interpretation. No string is ever built and handed to a shell.
 
 **Acceptance criteria:**
-- [ ] `clear` empties the model, the directory, the orphaned images and `hasUnread` together
-- [ ] `invoke <originalId> <timestamp>` runs a valid stored `execArgv`
-- [ ] A malformed, non-array, or leading-dash `execArgv` runs **nothing** and reports it
-- [ ] An entry with no `execArgv` does nothing — history has no live sender, so there is no action fallback
-- [ ] An unknown id/timestamp reports `none` rather than acting on the wrong entry
-- [ ] No shell string is constructed anywhere on this path
+- [x] `clear` empties the model, the directory, the orphaned images and `hasUnread` together
+- [x] `invoke <originalId> <timestamp>` runs a valid stored `execArgv`
+- [x] A malformed, non-array, or leading-dash `execArgv` runs **nothing** and reports it
+- [x] An entry with no `execArgv` does nothing — history has no live sender, so there is no action fallback
+- [x] An unknown id/timestamp reports `none` rather than acting on the wrong entry
+- [x] No shell string is constructed anywhere on this path
 
 **Verification:**
-- [ ] `omarchy-notification-send --exec '["notify-send","from history"]' "clickable" "body"`, let it expire, `invoke` it → the action runs
-- [ ] Hand-write a history entry with `execArgv` of `["-rf"]`, `"notstring"`, `[]` and `["rm","-rf","/tmp/x"]` — confirm the first three are refused and **do not** create `/tmp/x` for the fourth without an explicit run
-- [ ] `invoke 999 999` → `none`
-- [ ] `clear`, then `ls` the history and images directories → both empty; `unread` → `no`; `list` → `[]`
-- [ ] `./scripts/check-delta.sh` and the full suite pass
+- [x] `omarchy-notification-send --exec '["notify-send","from history"]' "clickable" "body"`, let it expire, `invoke` it → the action runs
+- [x] Hand-write a history entry with `execArgv` of `["-rf"]`, `"notstring"`, `[]` and `["rm","-rf","/tmp/x"]` — confirm the first three are refused and **do not** create `/tmp/x` for the fourth without an explicit run
+- [x] `invoke 999 999` → `none`
+- [x] `clear`, then `ls` the history and images directories → both empty; `unread` → `no`; `list` → `[]`
+- [x] `./scripts/check-delta.sh` and the full suite pass
 
 **Dependencies:** Task 3
 
@@ -270,13 +270,16 @@ appeared while three reads were in flight.
 
 ---
 
-## Checkpoint B: Module complete
+## Checkpoint B: Module complete  [REACHED]
 
-- [ ] Every acceptance criterion in `docs/spec/SPEC-history-store.md` is met
-- [ ] `node --test "test/**/*.test.js"` passes
-- [ ] `./scripts/check-delta.sh` passes and is within budget
-- [ ] `qmllint` reports no warning category upstream does not also report
-- [ ] `git merge upstream` is a no-op
-- [ ] Notifications, DND, toasts and `showHistory` all still work on a live shell
-- [ ] History state left clean, with nothing from testing behind
+- [x] Every acceptance criterion in `docs/spec/SPEC-history-store.md` is met
+- [x] `node --test "test/**/*.test.js"` passes — 104 tests
+- [x] `./scripts/check-delta.sh` passes at `+36/60`
+- [x] `qmllint` reports no warning category upstream does not also report
+- [x] `git merge upstream` is a no-op
+- [x] Notifications, DND, toasts and `showHistory` all still work on a live shell
+- [x] History state left clean: hostile test entries removed, the real entries restored from backup, `/tmp` probe files deleted
 - [ ] Ready for review; `center-ui` needs only `stacking` and `popup-cap` after this
+
+**history-store is complete.** History is readable, reports change, tracks
+unread as a boolean, clears, and can run a stored action safely.
