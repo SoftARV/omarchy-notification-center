@@ -55,7 +55,12 @@ All of these live beside this file in `docs/spec/` and reference each other by
 bare filename. Nothing in this initiative writes a document to the repo root —
 see the Project Structure section of `SPEC.md`.
 
-- Project-wide spec (six core areas, shared by every module): `SPEC.md`
-- Module specs: `SPEC-fork-seam.md`, `SPEC-settings.md`, `SPEC-timing.md`,
-  `SPEC-stacking.md`, `SPEC-popup-cap.md`, `SPEC-history-store.md`,
-  `SPEC-center-ui.md`
+- Project-wide spec (six core areas, shared by every module): [SPEC.md](SPEC.md)
+- Module specs, in build order:
+  [SPEC-fork-seam.md](SPEC-fork-seam.md),
+  [SPEC-settings.md](SPEC-settings.md),
+  [SPEC-timing.md](SPEC-timing.md),
+  [SPEC-stacking.md](SPEC-stacking.md),
+  [SPEC-popup-cap.md](SPEC-popup-cap.md),
+  [SPEC-history-store.md](SPEC-history-store.md),
+  [SPEC-center-ui.md](SPEC-center-ui.md)

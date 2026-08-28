@@ -172,7 +172,7 @@ command is now `node --test "test/**/*.test.js"`, scoped and quoted.
 
 ## Phase 3: The record
 
-## Task 4: README — how the fork is structured
+## Task 4: README — how the fork is structured  [DONE]
 
 **Description:** Add a "How the fork is structured" section to `README.md`: the
 sidecar rule, the hook inventory in `docs/spec/SPEC-fork-seam.md` as the source
@@ -182,24 +182,44 @@ is about to stop being literally true. Add a pointer to
 `docs/spec/CAPABILITY-MAP.md` so the root README stays a plugin README rather
 than turning into a project plan.
 
+**Scope changed by the user mid-task:** the README is to be *condensed*, with
+long explanations moved into their own files and referenced. So rather than
+adding a section, this task moved detail out — 81 lines down to 58, while
+covering more ground.
+
 **Acceptance criteria:**
-- [ ] README documents the sidecar rule and the `// fork:` marker convention
-- [ ] The "Tracking upstream" procedure ends with `./scripts/check-delta.sh`
-- [ ] The seven-lines claim is restated in terms of hook points and stays accurate
-- [ ] A pointer to `docs/spec/CAPABILITY-MAP.md` exists; no plan content is duplicated into the README
-- [ ] The existing install and DND-conflict instructions are untouched
+- [x] README states the sidecar rule and the `// fork:` marker convention, in five lines, linking `docs/spec/SPEC-fork-seam.md` for the rest
+- [x] The upstream procedure ends with `./scripts/check-delta.sh` — now in `docs/upstream.md`, which the README links, rather than in the README itself
+- [x] A pointer to `docs/spec/CAPABILITY-MAP.md` exists; no plan content is duplicated
+- [x] Install and DND-conflict instructions preserved: the commands stay in the README, the reasoning moved to `docs/install.md`
 
 **Verification:**
-- [ ] Every command in the README runs as written
-- [ ] Every file path in the README resolves
-- [ ] Manual read: someone who has never seen this repo can tell where new code goes
+- [x] Every command in the README and both new docs runs as written
+- [x] Every relative link in every markdown file resolves (enforced by `test/docs.test.js`)
+- [x] README is under the 60-line budget (enforced)
+- [x] No documentation file is orphaned (enforced)
+- [x] The README's factual claims re-checked against the tree: two files byte-identical, five `// fork:` markers present, qmllint categories identical to upstream
+
+**Deliberately dropped:** the "What differs from upstream" table and the "the
+whole fork is seven lines" sentence. Both were about to become maintenance
+liabilities — the table duplicated the hook inventory in `SPEC-fork-seam.md`,
+and the line count stops being seven the moment a module lands. The structure
+section says the durable thing instead.
+
+**Tests are structural, not editorial.** `test/docs.test.js` checks what rots
+silently: a link pointing at a renamed file, a README growing past the point
+anyone reads it, a doc nobody links. It has no opinion on prose.
 
 **Dependencies:** Task 2 (documents the finished script)
 
-**Files likely touched:**
-- `README.md`
+**Files touched:**
+- `README.md` (81 → 58 lines)
+- `docs/install.md` (new)
+- `docs/upstream.md` (new)
+- `docs/spec/CAPABILITY-MAP.md` (spec list turned into real links, so it works as the index it claims to be)
+- `test/docs.test.js` (new)
 
-**Estimated scope:** S (1 file)
+**Estimated scope:** M (5 files)
 
 ---
 
