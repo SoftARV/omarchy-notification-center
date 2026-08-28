@@ -159,3 +159,64 @@ function serializeSettings(value) {
     historyLastSeen: s.historyLastSeen
   }, null, 2) + "\n"
 }
+
+// ------------------------------------------------- IPC argument parsing
+
+// Every IPC argument arrives from bash as a string and is as untrusted as
+// notification content. null means "not a usable value" -- the caller rejects
+// rather than guessing.
+function parseCountArg(value) {
+  if (typeof value === "number") return isFinite(value) && value === Math.round(value) ? value : null
+  var text = String(value === null || value === undefined ? "" : value).trim()
+  // Strict integers only. Number("12abc") is NaN, but a laxer parse would read
+  // it as 12 and turn a typo into a setting the user never chose.
+  if (!/^-?\d+$/.test(text)) return null
+  var n = Number(text)
+  return isFinite(n) ? n : null
+}
+
+var TRUE_WORDS = ["on", "true", "1", "yes"]
+var FALSE_WORDS = ["off", "false", "0", "no"]
+
+function parseBoolArg(value) {
+  if (typeof value === "boolean") return value
+  var text = String(value === null || value === undefined ? "" : value).trim().toLowerCase()
+  if (TRUE_WORDS.indexOf(text) !== -1) return true
+  if (FALSE_WORDS.indexOf(text) !== -1) return false
+  return null
+}
+
+function isUrgencyName(name) {
+  var text = String(name === null || name === undefined ? "" : name).trim().toLowerCase()
+  return URGENCY_NAMES.indexOf(text) !== -1
+}
+
+// A new clamped object with one field changed, or null if unusable. New, not
+// mutated: QML emits settingsChanged on reassignment, so editing in place
+// would change the value while telling nobody.
+function withSetting(settings, key, rawValue) {
+  var base = clampSettings(settings)
+  var next = clampSettings(base)
+
+  if (key.indexOf("duration.") === 0) {
+    var urgency = key.slice("duration.".length)
+    if (!isUrgencyName(urgency)) return null
+    var ms = parseCountArg(rawValue)
+    if (ms === null) return null
+    next.popupDurationMs[String(urgency).trim().toLowerCase()] = ms
+    return clampSettings(next)
+  }
+
+  if (key === "groupByApp") {
+    var on = parseBoolArg(rawValue)
+    if (on === null) return null
+    next.groupByApp = on
+    return clampSettings(next)
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(BOUNDS, key)) return null
+  var n = parseCountArg(rawValue)
+  if (n === null) return null
+  next[key] = n
+  return clampSettings(next)
+}

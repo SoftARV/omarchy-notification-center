@@ -141,6 +141,8 @@ any other untrusted input.
   at version 4.
 - `{"version":4,"maxVisiblePopups":9999,"groupByApp":"yes","historyLimit":-1}`
   clamps to 20 / true / 1 and logs no error.
+- An IPC setter follows the same rule: an out-of-range number clamps and returns
+  `ok`, a non-number returns `invalid` and changes nothing.
 - A file of invalid JSON logs exactly one warning and yields full defaults.
 - A setter's effect is visible on the next notification without a shell restart.
 - Ten setter calls in one second produce one file write.

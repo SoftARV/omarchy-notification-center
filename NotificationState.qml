@@ -3,9 +3,12 @@
 // second one would race it. See docs/adr/0001-sidecar-seam.md.
 
 import QtQuick
+import Quickshell.Io
 import "NotificationPolicy.js" as Policy
 
-QtObject {
+// Item, not QtObject: QtObject has no default property, and every IpcHandler
+// in the shell lives in an Item. Non-visual -- no size, no anchors.
+Item {
   id: root
 
   // The mounting service, used to reach its debounced save.
@@ -27,6 +30,42 @@ QtObject {
     return {
       dnd: parsed.dndPresent ? parsed.settings.dnd : null,
       needsRewrite: parsed.needsRewrite
+    }
+  }
+
+  // Change one setting. False means the value was unusable and nothing moved.
+  // The save is debounced by Service.qml, so a slider drag writes once.
+  function applySetting(key, value) {
+    var next = Policy.withSetting(root.settings, key, value)
+    if (next === null) return false
+    root.settings = next
+    if (root.service) root.service.scheduleSettingsSave()
+    return true
+  }
+
+  // Its own target, so it costs no further Service.qml hook and cannot collide
+  // with an IPC name a future upstream adds to "notifications".
+  IpcHandler {
+    target: "notification-settings"
+
+    function getSettings(): string {
+      return JSON.stringify(root.settings, null, 2)
+    }
+
+    function setDuration(urgency: string, ms: string): string {
+      return root.applySetting("duration." + String(urgency), ms) ? "ok" : "invalid"
+    }
+
+    function setMaxVisible(count: string): string {
+      return root.applySetting("maxVisiblePopups", count) ? "ok" : "invalid"
+    }
+
+    function setGrouping(on: string): string {
+      return root.applySetting("groupByApp", on) ? "ok" : "invalid"
+    }
+
+    function setHistoryLimit(count: string): string {
+      return root.applySetting("historyLimit", count) ? "ok" : "invalid"
     }
   }
 

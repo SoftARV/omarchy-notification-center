@@ -273,3 +273,96 @@ test("a settings object still carries a usable dnd even when absent from the fil
   assert.strictEqual(r.dndPresent, false)
   assert.strictEqual(r.settings.dnd, false, "the object is still complete")
 })
+
+// ------------------------------------------------- IPC argument parsing
+
+// Every IPC argument arrives from bash as a string, and is as untrusted as
+// notification content. Parsing lives here so it is testable without a shell.
+test("parseCountArg accepts integers and rejects everything else", function() {
+  assert.strictEqual(policy.parseCountArg("42"), 42)
+  assert.strictEqual(policy.parseCountArg("0"), 0)
+  assert.strictEqual(policy.parseCountArg("-1"), -1)
+  assert.strictEqual(policy.parseCountArg(" 7 "), 7)
+  assert.strictEqual(policy.parseCountArg(7), 7)
+
+  assert.strictEqual(policy.parseCountArg("abc"), null)
+  assert.strictEqual(policy.parseCountArg(""), null)
+  assert.strictEqual(policy.parseCountArg(null), null)
+  assert.strictEqual(policy.parseCountArg(undefined), null)
+  assert.strictEqual(policy.parseCountArg("NaN"), null)
+  assert.strictEqual(policy.parseCountArg("Infinity"), null)
+  assert.strictEqual(policy.parseCountArg({}), null)
+})
+
+// "12abc" parsing as 12 is how a typo silently becomes a setting.
+test("parseCountArg rejects trailing junk rather than parsing a prefix", function() {
+  assert.strictEqual(policy.parseCountArg("12abc"), null)
+  assert.strictEqual(policy.parseCountArg("3.7"), null)
+  assert.strictEqual(policy.parseCountArg("1e3"), null)
+})
+
+test("parseBoolArg understands the words a shell user would type", function() {
+  ;["on", "true", "1", "yes", "ON", " True "].forEach(function(v) {
+    assert.strictEqual(policy.parseBoolArg(v), true, v)
+  })
+  ;["off", "false", "0", "no", "OFF"].forEach(function(v) {
+    assert.strictEqual(policy.parseBoolArg(v), false, v)
+  })
+  ;["maybe", "", null, undefined, "2", {}].forEach(function(v) {
+    assert.strictEqual(policy.parseBoolArg(v), null, String(v))
+  })
+  assert.strictEqual(policy.parseBoolArg(true), true)
+  assert.strictEqual(policy.parseBoolArg(false), false)
+})
+
+test("isUrgencyName accepts only the three urgencies", function() {
+  assert.strictEqual(policy.isUrgencyName("low"), true)
+  assert.strictEqual(policy.isUrgencyName("normal"), true)
+  assert.strictEqual(policy.isUrgencyName("critical"), true)
+  assert.strictEqual(policy.isUrgencyName("Normal"), true, "case should not matter")
+
+  assert.strictEqual(policy.isUrgencyName("bogus"), false)
+  assert.strictEqual(policy.isUrgencyName(""), false)
+  assert.strictEqual(policy.isUrgencyName(null), false)
+  // An unknown name must never create a key.
+  assert.strictEqual(policy.isUrgencyName("toString"), false)
+  assert.strictEqual(policy.isUrgencyName("__proto__"), false)
+})
+
+// withSetting is what a setter applies. It returns a whole new object, because
+// mutating settings in place would change the value without emitting QML's
+// settingsChanged.
+test("withSetting returns a new clamped object and never mutates the old one", function() {
+  var before = policy.defaultSettings()
+  var after = policy.withSetting(before, "maxVisiblePopups", 7)
+
+  assert.notStrictEqual(after, before)
+  assert.strictEqual(after.maxVisiblePopups, 7)
+  assert.strictEqual(before.maxVisiblePopups, 4, "the original must be untouched")
+})
+
+test("withSetting clamps out-of-range values and rejects unusable ones", function() {
+  var d = policy.defaultSettings()
+  assert.strictEqual(policy.withSetting(d, "maxVisiblePopups", 9999).maxVisiblePopups, 20)
+  assert.strictEqual(policy.withSetting(d, "historyLimit", -3).historyLimit, 1)
+  assert.strictEqual(policy.withSetting(d, "maxVisiblePopups", "abc"), null)
+  assert.strictEqual(policy.withSetting(d, "groupByApp", "maybe"), null)
+  assert.strictEqual(policy.withSetting(d, "nonsenseKey", 1), null)
+})
+
+test("withSetting handles the three durations by urgency name", function() {
+  var d = policy.defaultSettings()
+  assert.strictEqual(policy.withSetting(d, "duration.normal", 20000).popupDurationMs.normal, 20000)
+  assert.strictEqual(policy.withSetting(d, "duration.critical", 5000).popupDurationMs.critical, 5000)
+  assert.strictEqual(policy.withSetting(d, "duration.low", 0).popupDurationMs.low, 0)
+  assert.strictEqual(policy.withSetting(d, "duration.bogus", 5000), null)
+
+  var one = policy.withSetting(d, "duration.normal", 20000)
+  assert.strictEqual(one.popupDurationMs.low, 5000, "other urgencies untouched")
+  assert.strictEqual(d.popupDurationMs.normal, 8000, "original untouched")
+})
+
+test("withSetting output survives a serialize round trip", function() {
+  var changed = policy.withSetting(policy.defaultSettings(), "historyLimit", 25)
+  assert.deepStrictEqual(policy.parseSettings(policy.serializeSettings(changed)).settings, changed)
+})

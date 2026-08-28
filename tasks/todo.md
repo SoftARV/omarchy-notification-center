@@ -145,7 +145,7 @@ throughout. DND round-tripped on → restart → on → off → restart → off.
 
 ## Phase 3: Changing a value
 
-## Task 3: Setters and the notification-settings IPC target
+## Task 3: Setters and the notification-settings IPC target  [DONE]
 
 **Description:** Add the five setters to `NotificationState.qml`, the
 `settingsChanged` signal, and an `IpcHandler` on target
@@ -161,42 +161,65 @@ Every setter clamps before storing — arguments arrive from bash as strings and
 are as untrusted as notification content.
 
 **Acceptance criteria:**
-- [ ] `getSettings` returns the full current settings as JSON
-- [ ] `setDuration <low|normal|critical> <ms>`, `setMaxVisible`, `setGrouping`, `setHistoryLimit` each apply, clamp, and persist
-- [ ] Out-of-range and non-numeric arguments return `invalid` and change nothing
-- [ ] An unknown urgency name returns `invalid` rather than creating a key
-- [ ] `settingsChanged` fires after a change lands, so later modules can bind to it
-- [ ] Ten setter calls in one second produce exactly one file write (the 200 ms debounce)
-- [ ] Values survive `omarchy restart shell`
-- [ ] The existing `notifications` IPC target is untouched — `dndState`, `showHistory`, `dismissAll` and the rest still work
+- [x] `getSettings` returns the full current settings as JSON
+- [x] `setDuration <low|normal|critical> <ms>`, `setMaxVisible`, `setGrouping`, `setHistoryLimit` each apply, clamp, and persist
+- [x] Out-of-range and non-numeric arguments return `invalid` and change nothing
+- [x] An unknown urgency name returns `invalid` rather than creating a key
+- [x] `settingsChanged` fires after a change lands, so later modules can bind to it
+- [x] Ten setter calls in one second produce exactly one file write (the 200 ms debounce)
+- [x] Values survive `omarchy restart shell`
+- [x] The existing `notifications` IPC target is untouched — `dndState`, `showHistory`, `dismissAll` and the rest still work
 
 **Verification:**
-- [ ] `omarchy-shell notification-settings getSettings` → full JSON
-- [ ] `omarchy-shell notification-settings setMaxVisible 2` → `ok`; `... setMaxVisible 9999` → clamps to 20; `... setMaxVisible abc` → `invalid`
-- [ ] `omarchy-shell notification-settings setDuration normal 20000` → `ok`; `... setDuration bogus 5000` → `invalid`
-- [ ] Loop ten `setMaxVisible` calls, watch the file's mtime → one write
-- [ ] `omarchy restart shell && omarchy-shell notification-settings getSettings` → values persisted
-- [ ] `omarchy-shell notifications ping` → still `ok` (upstream's target intact)
-- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
+- [x] `omarchy-shell notification-settings getSettings` → full JSON
+- [x] `omarchy-shell notification-settings setMaxVisible 2` → `ok`; `... setMaxVisible 9999` → clamps to 20; `... setMaxVisible abc` → `invalid`
+- [x] `omarchy-shell notification-settings setDuration normal 20000` → `ok`; `... setDuration bogus 5000` → `invalid`
+- [x] Loop ten `setMaxVisible` calls, watch the file's mtime → one write
+- [x] `omarchy restart shell && omarchy-shell notification-settings getSettings` → values persisted
+- [x] `omarchy-shell notifications ping` → still `ok` (upstream's target intact)
+- [x] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
 
 **Dependencies:** Task 2
 
-**Files likely touched:**
-- `NotificationState.qml`
-- `test/settings.test.js` (argument coercion cases)
-- `docs/spec/SPEC-settings.md` (tick the delivered interface)
+**Files touched:**
+- `NotificationState.qml` (setters + `IpcHandler`; root type changed, see below)
+- `NotificationPolicy.js` (`parseCountArg`, `parseBoolArg`, `isUrgencyName`, `withSetting`)
+- `test/settings.test.js` (8 more tests)
+- `docs/spec/SPEC-settings.md` (AC conflict resolved)
 
-**Estimated scope:** S (3 files)
+**Estimated scope:** S (4 files). No `Service.qml` change at all — the IPC rode
+in on the mount hook 2 already performed, exactly as the plan predicted.
+
+**Root type changed from `QtObject` to `Item`.** `QtObject` has no default
+property, so a nested `IpcHandler` cannot be declared inside one, and every
+`IpcHandler` in the omarchy shell lives in an `Item`. It stays non-visual — no
+size, no anchors — like the `Process`, `Timer` and `FileView` children upstream
+already keeps in its own root `Item`.
+
+**Second AC conflict in this spec.** The criteria said out-of-range arguments
+"return `invalid` and change nothing", while the verification line said
+`setMaxVisible 9999` clamps to 20. Resolved the same way as Task 1's: a number
+past a bound is a value the user meant, so it clamps and returns `ok`; a
+non-number is not a value, so it returns `invalid` and changes nothing.
+
+**The debounce was verified by counting, not by inference.** A changed mtime
+only proves *a* write. `inotifywait` over ten rapid setter calls recorded
+exactly one `MOVED_TO` — one atomic write, as specified.
 
 ---
 
-## Checkpoint B: Module complete
+## Checkpoint B: Module complete  [REACHED]
 
-- [ ] Every acceptance criterion in `docs/spec/SPEC-settings.md` is met
-- [ ] `node --test "test/**/*.test.js"` passes
-- [ ] `./scripts/check-delta.sh` passes and is still within budget
-- [ ] `qmllint` reports no warning category upstream does not also report
-- [ ] `git merge upstream` is a no-op
-- [ ] `./install.sh` ships the new sidecar files and nothing from `test/ docs/ scripts/ tasks/`
-- [ ] Notifications, DND and history all still work on a live shell
+- [x] Every acceptance criterion in `docs/spec/SPEC-settings.md` is met
+- [x] `node --test "test/**/*.test.js"` passes — 78 tests
+- [x] `./scripts/check-delta.sh` passes at `+20/60`
+- [x] `qmllint` reports no warning category upstream does not also report
+- [x] `git merge upstream` is a no-op
+- [x] `./install.sh` ships the new sidecar files and nothing from `test/ docs/ scripts/ tasks/`
+- [x] Notifications, DND and history all still work on a live shell
+- [x] Settings reset to defaults after testing, so no test value was left behind
 - [ ] Ready for review; `timing`, `stacking` and `history-store` are unblocked
+
+**settings is complete.** The four knobs persist, clamp, survive a restart, and
+are reachable from the shell. Nothing reads them yet — `timing` is next and
+consumes two.
