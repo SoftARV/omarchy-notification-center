@@ -11,7 +11,7 @@ capped at three lines).
 
 ## Phase 1: The rule
 
-## Task 1: durationFor in NotificationPolicy.js
+## Task 1: durationFor in NotificationPolicy.js  [DONE]
 
 **Description:** One pure function returning a toast's lifetime in milliseconds
 from the settings and the urgency. The user's duration wins outright — the app's
@@ -22,27 +22,40 @@ reaches zero and the toast never leaves. Every path that could produce one is
 tested.
 
 **Acceptance criteria:**
-- [ ] `durationFor(urgency, settings, urgencyEnum)` returns the configured duration for that urgency
-- [ ] Critical, Low and Normal map correctly; every other value maps to normal, matching upstream's `default:`
-- [ ] `0` is returned unchanged — never auto-dismiss
-- [ ] A missing, non-numeric, non-finite or negative duration falls back to that urgency's built-in default
-- [ ] Null or malformed `settings`, or a missing `urgencyEnum`, yields defaults rather than throwing
-- [ ] The result is always a finite non-negative number — no input produces `NaN`
-- [ ] Default settings reproduce upstream's numbers exactly: 5000 low, 8000 normal, 0 critical
+- [x] `durationFor(urgency, settings, urgencyEnum)` returns the configured duration for that urgency
+- [x] Critical, Low and Normal map correctly; every other value maps to normal, matching upstream's `default:`
+- [x] `0` is returned unchanged — never auto-dismiss
+- [x] A missing, non-numeric, non-finite or negative duration falls back to that urgency's built-in default
+- [x] Null or malformed `settings`, or a missing `urgencyEnum`, yields defaults rather than throwing
+- [x] The result is always a finite non-negative number — no input produces `NaN`
+- [x] Default settings reproduce upstream's numbers exactly: 5000 low, 8000 normal, 0 critical
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → all pass, including new cases in `test/timing.test.js`
-- [ ] A test asserts `isFinite()` over every urgency for a deliberately hostile settings object
-- [ ] A test pins the upstream-equivalence claim: default settings give 5000/8000/0
-- [ ] `./scripts/check-delta.sh` → still passes (this task touches no upstream file)
+- [x] `node --test "test/**/*.test.js"` → all pass, including new cases in `test/timing.test.js`
+- [x] A test asserts `isFinite()` over every urgency for a deliberately hostile settings object
+- [x] A test pins the upstream-equivalence claim: default settings give 5000/8000/0
+- [x] `./scripts/check-delta.sh` → still passes (this task touches no upstream file)
 
 **Dependencies:** None
 
-**Files likely touched:**
-- `NotificationPolicy.js`
-- `test/timing.test.js` (new)
+**Files touched:**
+- `NotificationPolicy.js` (`urgencyName`, `durationFor`)
+- `test/timing.test.js` (new — 11 tests)
 
 **Estimated scope:** S (2 files)
+
+**A safer fallback than the spec asked for.** The criteria said a missing
+`urgencyEnum` should "yield defaults rather than throw". Falling through to
+normal would make a critical auto-dismiss — the worst way this can fail — so
+the fallback is the freedesktop urgency levels (0 low, 1 normal, 2 critical),
+which are a published standard rather than a Quickshell implementation detail.
+
+**Equivalence verified against the live constants**, not from memory: upstream's
+`lowPopupDuration: 5000` / `normalPopupDuration: 8000` are still in `Service.qml`,
+and `durationFor` at default settings returns exactly those, with critical 0.
+
+**The comment rule caught its author.** The first draft of `durationFor`'s
+docstring ran to four lines and `test/comments.test.js` failed the build.
 
 ---
 
