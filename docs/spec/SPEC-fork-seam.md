@@ -44,7 +44,7 @@ table's marker strings out of `Service.qml`.
 |---|---|---|---|---|---|
 | 1 | Import block: `import "NotificationPolicy.js" as Policy` | Mount | `fork-seam` | 1 | not needed — `NotificationState.qml` imports the policy, so `Service.qml` never does |
 | 2 | Body: `NotificationState { id: forkState; service: service }` | Mount | `settings` | 3 | spent |
-| 3 | `durationFor()` body | Delegation | `timing` | 3 | — |
+| 3 | `durationFor()` body | Delegation | `timing` | 3 | spent |
 | 4 | `historyLimit` property binding | Delegation | `history-store` | 1 | — |
 | 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 | spent |
 | 6 | `handleNotification()` — one call before the model insert | Delegation | `popup-cap` | 2 | — |
@@ -52,7 +52,7 @@ table's marker strings out of `Service.qml`.
 | 8 | `archivePopupFileFor()` — one revision-bump call | Delegation | `history-store` | 2 | — |
 | 9 | `clearHistory()` — one revision-bump call | Delegation | `history-store` | 1 | — |
 
-Usage after `settings`: **26 of 60 added lines.** Hook 1 turned out to be
+Usage after `timing`: **23 of 60 added lines.** Hook 1 turned out to be
 unnecessary — the sidecar imports `NotificationPolicy.js` itself, so
 `Service.qml` needs no import of its own. Hook 5 also came in under budget by
 leaving upstream's DND hydration block untouched: `NotificationState.hydrate()`

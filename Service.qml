@@ -99,14 +99,9 @@ Item {
   readonly property int maxPopupDuration: 30000
 
   function durationFor(urgency, expireTimeout) {
-    switch (urgency) {
-    case NotificationUrgency.Critical:
-      return 0
-    case NotificationUrgency.Low:
-      return Math.min(maxPopupDuration, Math.max(lowPopupDuration, requestedDuration(expireTimeout)))
-    default:
-      return Math.min(maxPopupDuration, Math.max(normalPopupDuration, requestedDuration(expireTimeout)))
-    }
+    // fork: the user's configured duration wins outright, so the app's
+    // expireTimeout is ignored -- SPEC-timing.md
+    return forkState.durationFor(urgency, NotificationUrgency)
   }
 
   function requestedDuration(expireTimeout) {

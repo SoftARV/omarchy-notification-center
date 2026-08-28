@@ -61,7 +61,7 @@ docstring ran to four lines and `test/comments.test.js` failed the build.
 
 ## Phase 2: The behaviour
 
-## Task 2: Hook 3 — toasts obey the setting
+## Task 2: Hook 3 — toasts obey the setting  [DONE]
 
 **Description:** Point `Service.qml`'s `durationFor` at the policy (hook 3). One
 line plus its marker. After this, `setDuration` changes how long a toast stays
@@ -73,46 +73,70 @@ Upstream's `requestedDuration()` becomes unreferenced and stays where it is.
 the behaviour is a stopwatch on a live shell.
 
 **Acceptance criteria:**
-- [ ] Hook 3 carries a `// fork:` marker naming `SPEC-timing.md`
-- [ ] `setDuration normal 20000` → the next normal toast lasts 20s ±0.5s
-- [ ] `setDuration normal 0` → the toast stays until dismissed
-- [ ] `notify-send -t 25000` yields the user's duration, not 25s
-- [ ] `notify-send -u critical` never auto-dismisses at default settings
-- [ ] Default settings behave exactly as before this module: 5s low, 8s normal, critical sticky
-- [ ] Hovering a toast still pauses its countdown (upstream behaviour intact)
-- [ ] `check-delta.sh` stays within budget
+- [x] Hook 3 carries a `// fork:` marker naming `SPEC-timing.md`
+- [x] `setDuration normal 20000` → the next normal toast lasts 20s ±0.5s
+- [x] `setDuration normal 0` → the toast stays until dismissed
+- [x] `notify-send -t 25000` yields the user's duration, not 25s
+- [x] `notify-send -u critical` never auto-dismisses at default settings
+- [x] Default settings behave exactly as before this module: 5s low, 8s normal, critical sticky
+- [ ] Hovering a toast still pauses its countdown — **not verifiable from here**; needs a pointer on the screen. The `ticking` binding and `HoverHandler` are upstream's and unmodified, but that is an argument, not a check
+- [x] `check-delta.sh` stays within budget
 
 **Verification:**
-- [ ] `./install.sh && omarchy restart shell`
-- [ ] Time a 20s toast with a stopwatch; then set 3000 and confirm it is visibly quicker
-- [ ] `setDuration normal 0`, send one, wait 60s → still there; dismiss by hand
-- [ ] `notify-send -u critical`, wait 60s → still there
-- [ ] Reset to defaults, send one, confirm ~8s
-- [ ] Hover a toast mid-countdown → it stops shrinking; unhover → it resumes
-- [ ] **Live-change behaviour:** send a toast, change the duration while it is on
+- [x] `./install.sh && omarchy restart shell`
+- [x] Time a 20s toast with a stopwatch; then set 3000 and confirm it is visibly quicker
+- [x] `setDuration normal 0`, send one, wait 60s → still there; dismiss by hand
+- [x] `notify-send -u critical`, wait 60s → still there
+- [x] Reset to defaults, send one, confirm ~8s
+- [ ] Hover a toast mid-countdown → it stops shrinking; unhover → it resumes — **left for a human**
+- [x] **Live-change behaviour:** send a toast, change the duration while it is on
       screen, and record what actually happens to it. Update `SPEC-timing.md`'s
       "Live changes" section from the observation, whichever way it goes
-- [ ] `qmllint Service.qml` → no warning category upstream does not also report
-- [ ] Settings reset to defaults afterwards, so no test value is left behind
+- [x] `qmllint Service.qml` → no warning category upstream does not also report
+- [x] Settings reset to defaults afterwards, so no test value is left behind
 
 **Dependencies:** Task 1
 
-**Files likely touched:**
-- `Service.qml` (hook 3)
-- `docs/spec/SPEC-timing.md` (record the observed live-change behaviour)
-- `docs/spec/SPEC-fork-seam.md` (mark hook 3 spent)
+**Files touched:**
+- `Service.qml` (hook 3 — one hunk, 3 added lines)
+- `NotificationState.qml` (a `durationFor` delegate, so `Service.qml` still needs no `Policy` import)
+- `docs/spec/SPEC-timing.md` (live-change behaviour recorded from measurement)
+- `docs/spec/SPEC-center-ui.md` (warned about the slider hazard this uncovered)
+- `docs/spec/SPEC-fork-seam.md` (hook 3 marked spent; usage now 23/60)
 
-**Estimated scope:** S (3 files)
+**Estimated scope:** S (5 files)
+
+**Measured, not asserted.** Default normal 8.0s; low 5.0s; `setDuration normal
+20000` → 20.0s; `3000` → 3.0s; `notify-send -t 25000` → 3.0s and `-t 1000` →
+3.0s, so override holds in both directions; critical still on screen past 70s;
+`duration 0` still on screen past 45s and removable with `dismissAll` — sticky,
+not stuck.
+
+**The live-change question is answered: the lifetime re-evaluates.** A toast 5s
+into a 60s lifetime, with the duration then set to 3s, vanished 3s later —
+`remainingLifetime` is a fraction, so the ~0.92 remaining was reapplied to the
+new duration. The spec asserted the opposite on the incorrect grounds that
+`readonly` means evaluated-once; it now records what was measured, and
+`SPEC-center-ui.md` carries the consequence for its planned slider.
+
+**A false alarm worth recording.** An early measurement showed a low-urgency
+toast lasting 15.8s instead of 5s. The bug was in the measuring harness, which
+deleted popup state files without removing the on-screen toast, so it timed the
+previous toast's tail. Re-measured cleanly: 5.0s, urgency 0.
 
 ---
 
-## Checkpoint: Module complete
+## Checkpoint: Module complete  [REACHED]
 
-- [ ] Every acceptance criterion in `docs/spec/SPEC-timing.md` is met
-- [ ] `node --test "test/**/*.test.js"` passes
-- [ ] `./scripts/check-delta.sh` passes and is within budget
-- [ ] `qmllint` reports no warning category upstream does not also report
-- [ ] `git merge upstream` is a no-op
-- [ ] Notifications, DND and history all still work on a live shell
-- [ ] The "Live changes" section of the spec matches observed behaviour
+- [x] Every acceptance criterion in `docs/spec/SPEC-timing.md` is met, except the hover check noted above
+- [x] `node --test "test/**/*.test.js"` passes — 89 tests
+- [x] `./scripts/check-delta.sh` passes at `+23/60`
+- [x] `qmllint` reports warning categories identical to upstream's own file
+- [x] `git merge upstream` is a no-op
+- [x] Notifications, DND and history all still work on a live shell
+- [x] The "Live changes" section of the spec matches observed behaviour
+- [ ] **For you:** hover a toast mid-countdown and confirm it pauses
 - [ ] Ready for review; `stacking` and `history-store` remain unblocked
+
+**timing is complete.** The first of the five original asks is real behaviour:
+`setDuration` changes how long a toast stays on screen.

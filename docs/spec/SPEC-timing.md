@@ -55,19 +55,22 @@ and is a candidate for removal the next time the schema moves.
 
 ### Live changes
 
-A duration change certainly applies to notifications arriving after it.
+**Observed, not assumed: a duration change re-evaluates toasts already on
+screen.** `lifetime` is a QML binding that calls through to `forkState.settings`,
+and QML tracks that dependency across the function calls.
 
-What happens to toasts *already on screen* is an open behavioural question, not
-a settled design. `lifetime` is a QML binding that calls `durationFor`, which
-reads `forkState.settings` — and QML tracks binding dependencies through
-function calls, so the lifetime of a visible toast may recompute. Since
-`remainingLifetime` is a fraction, a shortened duration would shorten the time
-left proportionally rather than restart it.
+Measured: a toast 5 s into a 60 s lifetime, with the duration then set to 3 s,
+disappeared 3 s later — `remainingLifetime` is a *fraction*, so the ~0.92 left
+was reapplied to the new duration rather than restarting it.
 
 An earlier draft of this spec asserted the opposite, reasoning that a `readonly
-property` is evaluated once. That is wrong: `readonly` prevents assignment, not
-re-evaluation. The real behaviour is verified during the build and documented
-from what is observed.
+property` is evaluated once. `readonly` prevents assignment, not re-evaluation.
+
+The behaviour is reasonable for the IPC calls that exist today — a deliberate
+change takes effect at once. It is a hazard for `center-ui`'s planned slider:
+`applySetting` reassigns `settings` on *every* call while only the file write is
+debounced, so dragging a slider from 20 s to 3 s would shrink every visible toast
+progressively and could pull one off screen mid-read. See `SPEC-center-ui.md`.
 
 ## Acceptance Criteria
 
