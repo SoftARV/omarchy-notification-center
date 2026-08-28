@@ -49,7 +49,7 @@ table's marker strings out of `Service.qml`.
 | 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 | spent |
 | 6 | `handleNotification()` — one call before the model insert | Delegation | `popup-cap` | 2 | — |
 | 7 | Popup `Repeater` `model` and `delegate` | Mount | `stacking` | 6 | — |
-| 8 | `archivePopupFileFor()` — one revision-bump call | Delegation | `history-store` | 2 | — |
+| 8 | `archivePopupFileFor()` **and** `writeHistoryFile()` — one revision-bump call each | Delegation | `history-store` | 4 | — |
 | 9 | `clearHistory()` — one revision-bump call | Delegation | `history-store` | 1 | — |
 
 Usage after `timing`: **23 of 60 added lines.** Hook 1 turned out to be

@@ -46,10 +46,13 @@ the widget can incubate before the service mounts.
 
 ### Bar button
 
-Bell glyph, `󰂚`. When `forkState.unreadCount > 0`, a count badge in the shell's
-accent color; the glyph dims to the bar's normal foreground otherwise. Click
-toggles the panel. Opening it calls `forkState.markHistorySeen()`, so the badge
-clears on read rather than on dismissal of individual entries.
+Bell glyph, `󰂚`. When `forkState.hasUnread`, a small dot in the shell's accent
+colour; the glyph dims to the bar's normal foreground otherwise. Click toggles
+the panel. Opening it calls `forkState.markHistorySeen()`, so the dot clears on
+read rather than on dismissal of individual entries.
+
+A dot, not a number: the useful signal is "there is something to look at", and
+the list itself says how much. A live count in the bar is clutter.
 
 Do-not-disturb is deliberately absent — it was not selected for this panel and
 stays on its keybind and IPC.
@@ -101,10 +104,10 @@ installer's business.
 ## Acceptance Criteria
 
 - The bell appears in the bar once the widget is added to the bar layout.
-- The badge shows an accurate unread count and clears when the panel opens.
+- The dot appears when something has arrived since the last open, and clears when the panel opens.
 - The panel lists history newest-first with correct icons, images and text.
 - Clicking an entry with a stored action runs it.
-- Clear all empties the list, the directory and the badge together.
+- Clear all empties the list, the directory and the dot together.
 - Each of the four controls persists, survives a shell restart, and affects the
   next notification with no restart.
 - A notification arriving while the panel is open appears in the list once it
@@ -121,8 +124,8 @@ installer's business.
 ./install.sh
 # add the widget to the bar in ~/.config/omarchy/shell.json, then:
 omarchy restart shell
-notify-send one; notify-send two          # badge reads 2
-# open the panel: badge clears, both listed, settings controls respond
+notify-send one; notify-send two          # the dot lights
+# open the panel: dot clears, both listed, settings controls respond
 omarchy-notification-send --exec '["notify-send","from history"]' "clickable" "body"
 # let it expire, open the panel, click it -- the action runs
 /usr/lib/qt6/bin/qmllint Center.qml components/HistoryList.qml components/CenterSettings.qml

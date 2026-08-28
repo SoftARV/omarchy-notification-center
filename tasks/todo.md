@@ -1,144 +1,186 @@
-# Tasks: timing
+# Tasks: history-store
 
 Plan: [`tasks/plan.md`](plan.md). Spec:
-[`docs/spec/SPEC-timing.md`](../docs/spec/SPEC-timing.md).
-Every task also clears the Definition of Done in
+[`docs/spec/SPEC-history-store.md`](../docs/spec/SPEC-history-store.md).
+Every task clears the Definition of Done in
 [`docs/spec/SPEC.md`](../docs/spec/SPEC.md); commits follow `CLAUDE.local.md`
-(conventional commits via `git-commit-helper`, scope `timing`, comment blocks
-capped at three lines).
+(conventional commits via `git-commit-helper`, scope `history-store`, comment
+blocks capped at three lines).
 
 ---
 
-## Phase 1: The rule
+## Phase 1: Reading
 
-## Task 1: durationFor in NotificationPolicy.js  [DONE]
+## Task 1: History parsing and the unread predicate
 
-**Description:** One pure function returning a toast's lifetime in milliseconds
-from the settings and the urgency. The user's duration wins outright — the app's
-`expireTimeout` is not a parameter.
+**Description:** The pure half of the module. Turn the concatenated output of
+`awk 1 history/*.json` into ordered, validated rows, and answer "is anything
+newer than `historyLastSeen`" from filenames alone.
 
-The output feeds `remainingLifetime -= 50.0 / lifetime`, where a `NaN` never
-reaches zero and the toast never leaves. Every path that could produce one is
-tested.
+One torn file must cost one entry, not the whole history — that is the failure
+this task exists to prevent.
 
 **Acceptance criteria:**
-- [x] `durationFor(urgency, settings, urgencyEnum)` returns the configured duration for that urgency
-- [x] Critical, Low and Normal map correctly; every other value maps to normal, matching upstream's `default:`
-- [x] `0` is returned unchanged — never auto-dismiss
-- [x] A missing, non-numeric, non-finite or negative duration falls back to that urgency's built-in default
-- [x] Null or malformed `settings`, or a missing `urgencyEnum`, yields defaults rather than throwing
-- [x] The result is always a finite non-negative number — no input produces `NaN`
-- [x] Default settings reproduce upstream's numbers exactly: 5000 low, 8000 normal, 0 critical
+- [ ] `historyRows(raw)` returns rows newest-first with every role a card needs, including `image` and `execArgv`
+- [ ] A truncated or invalid line is skipped and the surrounding entries still load
+- [ ] Empty input returns an empty array, not null
+- [ ] Rows are shaped exactly like `popupModel` rows, so `NotificationCard` can render them unchanged
+- [ ] `hasUnreadIn(fileNames, lastSeen)` is true when any name's leading timestamp exceeds `lastSeen`
+- [ ] It is false for an empty list, for `lastSeen` in the future, and for names it cannot parse
+- [ ] Neither function throws on any malformed input
 
 **Verification:**
-- [x] `node --test "test/**/*.test.js"` → all pass, including new cases in `test/timing.test.js`
-- [x] A test asserts `isFinite()` over every urgency for a deliberately hostile settings object
-- [x] A test pins the upstream-equivalence claim: default settings give 5000/8000/0
-- [x] `./scripts/check-delta.sh` → still passes (this task touches no upstream file)
+- [ ] `node --test "test/**/*.test.js"` → all pass, including `test/history-store.test.js`
+- [ ] A test places a truncated file **between** two good ones and asserts both survive
+- [ ] A test uses real serialized entries from this machine's history directory as fixture text
+- [ ] `./scripts/check-delta.sh` → passes; this task touches no upstream file
 
 **Dependencies:** None
 
-**Files touched:**
-- `NotificationPolicy.js` (`urgencyName`, `durationFor`)
-- `test/timing.test.js` (new — 11 tests)
+**Files likely touched:**
+- `NotificationPolicy.js`
+- `test/history-store.test.js` (new)
 
 **Estimated scope:** S (2 files)
 
-**A safer fallback than the spec asked for.** The criteria said a missing
-`urgencyEnum` should "yield defaults rather than throw". Falling through to
-normal would make a critical auto-dismiss — the worst way this can fail — so
-the fallback is the freedesktop urgency levels (0 low, 1 normal, 2 critical),
-which are a published standard rather than a Quickshell implementation detail.
-
-**Equivalence verified against the live constants**, not from memory: upstream's
-`lowPopupDuration: 5000` / `normalPopupDuration: 8000` are still in `Service.qml`,
-and `durationFor` at default settings returns exactly those, with critical 0.
-
-**The comment rule caught its author.** The first draft of `durationFor`'s
-docstring ran to four lines and `test/comments.test.js` failed the build.
-
 ---
 
-## Phase 2: The behaviour
+## Task 2: The model, and `notification-history list`
 
-## Task 2: Hook 3 — toasts obey the setting  [DONE]
+**Description:** Give the sidecar its own `Process` reading the history
+directory, a `ListModel` it populates, and an IPC target to see the result. The
+read is lazy — nothing loads until asked.
 
-**Description:** Point `Service.qml`'s `durationFor` at the policy (hook 3). One
-line plus its marker. After this, `setDuration` changes how long a toast stays
-on screen — the first of the five original asks to become real behaviour.
-
-Upstream's `requestedDuration()` becomes unreferenced and stays where it is.
-
-**No unit test.** It is a one-line delegation; the logic is tested in Task 1 and
-the behaviour is a stopwatch on a live shell.
+Reading outside `popupFileQueue` is deliberate: that queue's `Process` has no
+stdout collector and physically cannot carry a read.
 
 **Acceptance criteria:**
-- [x] Hook 3 carries a `// fork:` marker naming `SPEC-timing.md`
-- [x] `setDuration normal 20000` → the next normal toast lasts 20s ±0.5s
-- [x] `setDuration normal 0` → the toast stays until dismissed
-- [x] `notify-send -t 25000` yields the user's duration, not 25s
-- [x] `notify-send -u critical` never auto-dismisses at default settings
-- [x] Default settings behave exactly as before this module: 5s low, 8s normal, critical sticky
-- [x] Hovering a toast still pauses its countdown — confirmed by the user, 2026-08-28: with three 25 s toasts on screen, the hovered one stayed while the other two expired
-- [x] `check-delta.sh` stays within budget
+- [ ] `forkState.historyModel` is an empty `ListModel` until `loadHistory()` is called
+- [ ] `loadHistory()` populates it newest-first from the history directory
+- [ ] An empty directory yields an empty model and no error in the shell log
+- [ ] A truncated file in the directory does not stop the rest loading
+- [ ] `notification-history list` returns the model as JSON
+- [ ] Two `loadHistory()` calls in flight at once do not double-populate
+- [ ] Reading does not block the UI: notifications still appear during a load
 
 **Verification:**
-- [x] `./install.sh && omarchy restart shell`
-- [x] Time a 20s toast with a stopwatch; then set 3000 and confirm it is visibly quicker
-- [x] `setDuration normal 0`, send one, wait 60s → still there; dismiss by hand
-- [x] `notify-send -u critical`, wait 60s → still there
-- [x] Reset to defaults, send one, confirm ~8s
-- [x] Hover a toast mid-countdown → it stops shrinking; unhover → it resumes — confirmed by the user
-- [x] **Live-change behaviour:** send a toast, change the duration while it is on
-      screen, and record what actually happens to it. Update `SPEC-timing.md`'s
-      "Live changes" section from the observation, whichever way it goes
-- [x] `qmllint Service.qml` → no warning category upstream does not also report
-- [x] Settings reset to defaults afterwards, so no test value is left behind
+- [ ] `./install.sh && omarchy restart shell`
+- [ ] `notify-send a; notify-send b`, let them expire, then `notification-history list` → both, newest first
+- [ ] `printf 'garbage' > ~/.local/state/omarchy/notifications/history/bad.json`; list again → the good entries still appear
+- [ ] Empty the directory, `list` → `[]`, no error
+- [ ] `qmllint Service.qml NotificationState.qml` → no warning category upstream does not also report
+- [ ] `./scripts/check-delta.sh` → unchanged; this task adds no `Service.qml` hook
 
 **Dependencies:** Task 1
 
-**Files touched:**
-- `Service.qml` (hook 3 — one hunk, 3 added lines)
-- `NotificationState.qml` (a `durationFor` delegate, so `Service.qml` still needs no `Policy` import)
-- `docs/spec/SPEC-timing.md` (live-change behaviour recorded from measurement)
-- `docs/spec/SPEC-center-ui.md` (warned about the slider hazard this uncovered)
-- `docs/spec/SPEC-fork-seam.md` (hook 3 marked spent; usage now 23/60)
+**Files likely touched:**
+- `NotificationState.qml`
+- `test/history-store.test.js`
 
-**Estimated scope:** S (5 files)
-
-**Measured, not asserted.** Default normal 8.0s; low 5.0s; `setDuration normal
-20000` → 20.0s; `3000` → 3.0s; `notify-send -t 25000` → 3.0s and `-t 1000` →
-3.0s, so override holds in both directions; critical still on screen past 70s;
-`duration 0` still on screen past 45s and removable with `dismissAll` — sticky,
-not stuck.
-
-**The live-change question is answered: the lifetime re-evaluates.** A toast 5s
-into a 60s lifetime, with the duration then set to 3s, vanished 3s later —
-`remainingLifetime` is a fraction, so the ~0.92 remaining was reapplied to the
-new duration. The spec asserted the opposite on the incorrect grounds that
-`readonly` means evaluated-once; it now records what was measured, and
-`SPEC-center-ui.md` carries the consequence for its planned slider.
-
-**A false alarm worth recording.** An early measurement showed a low-urgency
-toast lasting 15.8s instead of 5s. The bug was in the measuring harness, which
-deleted popup state files without removing the on-screen toast, so it timed the
-previous toast's tail. Re-measured cleanly: 5.0s, urgency 0.
+**Estimated scope:** S (2 files)
 
 ---
 
-## Checkpoint: Module complete  [REACHED]
+## Phase 2: Change and unread
 
-- [x] Every acceptance criterion in `docs/spec/SPEC-timing.md` is met
-- [x] `node --test "test/**/*.test.js"` passes — 89 tests
-- [x] `./scripts/check-delta.sh` passes at `+23/60`
-- [x] `qmllint` reports warning categories identical to upstream's own file
-- [x] `git merge upstream` is a no-op
-- [x] Notifications, DND and history all still work on a live shell
-- [x] The "Live changes" section of the spec matches observed behaviour
-- [x] Hover-pause confirmed by the user on three simultaneous 25 s toasts: the
-      hovered one held while the other two expired, so the pause is per-card and
-      the duration is applied consistently across a stack
-- [x] Reviewed and approved by the user, 2026-08-28; `stacking` and `history-store` remain unblocked
+## Task 3: Revision counter, hasUnread, markSeen
 
-**timing is complete.** The first of the five original asks is real behaviour:
-`setDuration` changes how long a toast stays on screen.
+**Description:** Make the store report change. Hook 4 makes `historyLimit`
+settings-driven; hook 8 bumps a revision from **both** functions that create a
+history entry; hook 9 bumps it on clear. `hasUnread` reads filenames against
+`historyLastSeen`, and `markSeen` persists a new timestamp through the settings
+setter.
+
+Both writers matter: covering only `archivePopupFileFor` would leave the
+indicator dark for exactly the notifications missed while DND was on.
+
+**Acceptance criteria:**
+- [ ] `historyLimit` comes from settings; `setHistoryLimit 5` trims to 5 on the next archive
+- [ ] `historyRevision` increases after an archive, after a DND-silenced write, and after a clear
+- [ ] `hasUnread` is true after a notification reaches history, false after `markSeen`
+- [ ] `hasUnread` is correct immediately after a shell restart, without loading the model
+- [ ] A DND-silenced notification sets `hasUnread` just as an expired toast does
+- [ ] `markSeen` persists `historyLastSeen` in `notifications.json`
+- [ ] Hooks 4, 8 and 9 each carry a `// fork:` marker naming `SPEC-history-store.md`
+- [ ] `check-delta.sh` stays within budget
+
+**Verification:**
+- [ ] `notification-history unread` → `no`; send one, let it expire → `yes`; `markSeen` → `no`
+- [ ] `omarchy restart shell` with unread entries present → still `yes`
+- [ ] `setDnd on`, `notify-send`, `setDnd off` → `unread` is `yes` (the DND path)
+- [ ] `setHistoryLimit 5`, generate 8 notifications, count files → 5
+- [ ] `grep historyLastSeen ~/.local/state/omarchy/notifications.json` after `markSeen` → a recent timestamp
+- [ ] Time the trim with a full directory at limit 100; record it in the plan
+- [ ] `./scripts/check-delta.sh` → passes, report the new count
+
+**Dependencies:** Task 2
+
+**Files likely touched:**
+- `Service.qml` (hooks 4, 8 ×2, 9)
+- `NotificationState.qml`
+- `NotificationPolicy.js`
+- `docs/spec/SPEC-fork-seam.md` (mark hooks spent)
+
+**Estimated scope:** M (4 files)
+
+---
+
+## Checkpoint A: The store is readable and reports change
+
+- [ ] History can be listed, and a torn file costs one entry rather than all of them
+- [ ] The unread flag is right after a restart and after a DND-silenced notification
+- [ ] Notifications, DND, toasts and `showHistory` all still work
+- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
+- [ ] Review with human before proceeding
+
+---
+
+## Phase 3: Acting on an entry
+
+## Task 4: `clear` and `invoke`
+
+**Description:** Wrap `clearHistory()` so the model, the directory, the images
+and the unread flag empty together, and add `invokeHistoryEntry` to run an
+entry's stored action.
+
+**`invoke` is the highest-risk path in this project.** A notification body is
+attacker-influenced and this ends in process execution. It reuses
+`NotificationLogic.parseExecArgv` unchanged — structural, fail-closed — and
+`Util.execArgv`, which passes argv as positional parameters with no shell
+interpretation. No string is ever built and handed to a shell.
+
+**Acceptance criteria:**
+- [ ] `clear` empties the model, the directory, the orphaned images and `hasUnread` together
+- [ ] `invoke <originalId> <timestamp>` runs a valid stored `execArgv`
+- [ ] A malformed, non-array, or leading-dash `execArgv` runs **nothing** and reports it
+- [ ] An entry with no `execArgv` does nothing — history has no live sender, so there is no action fallback
+- [ ] An unknown id/timestamp reports `none` rather than acting on the wrong entry
+- [ ] No shell string is constructed anywhere on this path
+
+**Verification:**
+- [ ] `omarchy-notification-send --exec '["notify-send","from history"]' "clickable" "body"`, let it expire, `invoke` it → the action runs
+- [ ] Hand-write a history entry with `execArgv` of `["-rf"]`, `"notstring"`, `[]` and `["rm","-rf","/tmp/x"]` — confirm the first three are refused and **do not** create `/tmp/x` for the fourth without an explicit run
+- [ ] `invoke 999 999` → `none`
+- [ ] `clear`, then `ls` the history and images directories → both empty; `unread` → `no`; `list` → `[]`
+- [ ] `./scripts/check-delta.sh` and the full suite pass
+
+**Dependencies:** Task 3
+
+**Files likely touched:**
+- `NotificationState.qml`
+- `test/history-store.test.js`
+
+**Estimated scope:** S (2 files)
+
+---
+
+## Checkpoint B: Module complete
+
+- [ ] Every acceptance criterion in `docs/spec/SPEC-history-store.md` is met
+- [ ] `node --test "test/**/*.test.js"` passes
+- [ ] `./scripts/check-delta.sh` passes and is within budget
+- [ ] `qmllint` reports no warning category upstream does not also report
+- [ ] `git merge upstream` is a no-op
+- [ ] Notifications, DND, toasts and `showHistory` all still work on a live shell
+- [ ] History state left clean, with nothing from testing behind
+- [ ] Ready for review; `center-ui` needs only `stacking` and `popup-cap` after this
