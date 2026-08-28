@@ -1,23 +1,11 @@
 # nec.notifications
 
-A fork of Omarchy's built-in `omarchy.notifications` service — the notification
-daemon, toast popups, do-not-disturb, and history panel — with toasts moved
-from the top-right corner to the top-center of the screen.
+A fork of Omarchy's built-in `omarchy.notifications` — the notification daemon,
+toast popups, do-not-disturb and history — with toasts moved from the top-right
+corner to the top-center of the screen.
 
-Upstream lives at `/usr/share/omarchy/shell/plugins/notifications`.
-
-## What differs from upstream
-
-Currently tracking **omarchy 4.0.1-1**. The whole fork is seven lines:
-
-| File | Change |
-| --- | --- |
-| `manifest.json` | id `nec.notifications`, name "My Notifications", `omarchy.clonedFrom` |
-| `Service.qml` | popup column, layout alignment and card anchored to `horizontalCenter` instead of `right`; the bar's right margin is dropped |
-
-`NotificationLogic.js` and `components/NotificationCard.qml` are byte-identical
-to upstream. Keeping it that way is the point: the smaller the delta, the more
-often an upstream merge lands without a conflict.
+Tracking **omarchy 4.0.1-1**. Upstream lives at
+`/usr/share/omarchy/shell/plugins/notifications`.
 
 ## Install
 
@@ -25,12 +13,7 @@ often an upstream merge lands without a conflict.
 ./install.sh
 ```
 
-Copies the runtime files into `~/.config/omarchy/plugins/nec.notifications/`
-and asks the shell to rescan. Copied rather than symlinked because
-`omarchy-plugin-validate` rejects a plugin folder containing any symlink.
-
-This plugin binds `org.freedesktop.Notifications`, so the stock
-`omarchy.notifications` must be disabled or the two race for the name. In
+Then disable the stock plugin, or the two race for the D-Bus name. In
 `~/.config/omarchy/shell.json`:
 
 ```json
@@ -38,41 +21,35 @@ This plugin binds `org.freedesktop.Notifications`, so the stock
 "plugins": [{ "id": "nec.notifications" }]
 ```
 
-Geometry changes need a full `omarchy restart shell`; `rescanPlugins` reloads
-the code but keeps the live service instance.
+Geometry changes need a full `omarchy restart shell`.
 
-## Tracking upstream
+→ [docs/install.md](docs/install.md)
 
-The `upstream` branch carries pristine snapshots of
-`/usr/share/omarchy/shell/plugins/notifications` and nothing else — no fork
-edits ever land on it. That gives a real three-way base, so picking up an
-omarchy release is a merge rather than a re-application by hand.
+## How the fork is built
 
-Its root commit is a reconstruction of the fork point (see that commit message
-for what pins each file); every commit after it is a verbatim vendor drop.
+Upstream's files stay upstream's. `NotificationLogic.js` and
+`components/NotificationCard.qml` are byte-identical to upstream;
+`Service.qml` carries only budgeted hook lines, each marked `// fork:` and
+naming its spec. Everything the fork adds lives in sidecar files upstream will
+never have, so a vendor drop cannot touch them.
 
-To pick up a new omarchy release:
+→ [docs/spec/SPEC-fork-seam.md](docs/spec/SPEC-fork-seam.md)
 
-```sh
-git checkout upstream
-cp -r /usr/share/omarchy/shell/plugins/notifications/. .
-git commit -am "Vendor omarchy.notifications from omarchy <version>"
+## Taking an upstream release
 
-git checkout main
-git merge upstream
-```
+The `upstream` branch carries pristine vendor drops and no fork edits, so
+picking up an omarchy release is a merge rather than a re-application by hand.
 
-Then check the delta is still only the fork's own lines, and that the result
-lints no worse than upstream does:
+→ [docs/upstream.md](docs/upstream.md)
+
+## Development
 
 ```sh
-git diff upstream -- Service.qml NotificationLogic.js manifest.json components/
-/usr/lib/qt6/bin/qmllint Service.qml
+node --test "test/**/*.test.js"   # unit tests, no dependencies
+./scripts/check-delta.sh          # the fork is still inside its seam
 ```
 
-`qmllint` cannot resolve the `qs.*` imports outside the shell, so it reports
-unqualified-access and uncreatable-type warnings on upstream's own files too.
-Compare against upstream rather than expecting silence.
+→ [docs/spec/CAPABILITY-MAP.md](docs/spec/CAPABILITY-MAP.md) for planned work
 
 ## License
 

@@ -40,6 +40,7 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
+  // fork: toasts are centered, not right-aligned -- SPEC.md
   // Toasts are fixed to the top-center of the screen (upstream puts them in the
   // top-right corner). Centered, only the bar's top margin is applied: the
   // right margin popupPlacement still computes has nothing to hold the column
@@ -980,9 +981,13 @@ Item {
 
       ColumnLayout {
         id: popupColumn
+        // fork: horizontalCenter, upstream anchors right -- SPEC.md
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: popupWindow.popupPlacement.margins.top
+        // fork: upstream's anchors.rightMargin is dropped here -- SPEC.md
+        // A centered column has no right edge for that margin to hold off, so
+        // applying it would shift every toast sideways by the bar's width.
         spacing: Style.space(8)
 
         Repeater {
@@ -1007,6 +1012,7 @@ Item {
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
+            // fork: AlignHCenter, upstream aligns right -- SPEC.md
             Layout.alignment: Qt.AlignHCenter
             implicitHeight: card.implicitHeight
 
@@ -1040,6 +1046,7 @@ Item {
 
             NotificationCard {
               id: card
+              // fork: horizontalCenter, upstream anchors right -- SPEC.md
               anchors.horizontalCenter: parent.horizontalCenter
               app: cardSlot.app
               appIcon: cardSlot.appIcon
