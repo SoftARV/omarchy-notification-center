@@ -73,3 +73,8 @@ git diff upstream -- Service.qml NotificationLogic.js manifest.json components/
 `qmllint` cannot resolve the `qs.*` imports outside the shell, so it reports
 unqualified-access and uncreatable-type warnings on upstream's own files too.
 Compare against upstream rather than expecting silence.
+
+## License
+
+MIT, the same as Omarchy. Nearly every line here is upstream's, so upstream's
+copyright is kept alongside the fork's — see `LICENSE`.
