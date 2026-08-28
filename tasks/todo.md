@@ -77,7 +77,7 @@ inside a binding.
 - [x] `DELTA_BUDGET=5 ./scripts/check-delta.sh` → fails on the budget
 - [x] `/usr/lib/qt6/bin/qmllint Service.qml` → 32 warnings, warning categories identical to upstream's own file
 - [x] `./install.sh && omarchy restart shell && notify-send` → service live, popup persisted
-- [ ] **Visual**: confirm toasts still render top-center (needs a human at the screen)
+- [x] **Visual**: toasts still render top-center (confirmed by the user, 2026-08-28)
 
 **Bug found and fixed during verification:** the first cut of the marker check
 asked "does this hunk contain a marker anywhere". An unmarked line placed
@@ -119,7 +119,7 @@ mistaken for a guarantee.
 
 ## Phase 2: The scaffold
 
-## Task 3: Test harness for QML JS resources
+## Task 3: Test harness for QML JS resources  [DONE]
 
 **Description:** Create `test/harness.js`, which loads a QML `.js` resource into
 a fresh V8 context and returns its declared functions, plus a test that proves
@@ -132,24 +132,41 @@ context globals (`Date`, `Math`, `JSON`, `console`) must not leak into the
 returned surface, or tests will assert against the wrong thing.
 
 **Acceptance criteria:**
-- [ ] `node --test` runs and passes
-- [ ] `harness.load("NotificationLogic.js")` returns the file's declared functions and none of the seeded globals
-- [ ] Tests cover a known-good and a known-bad input for at least one real upstream function, proving the harness exercises behavior rather than just importing
-- [ ] Loading a nonexistent path fails with a clear message, not a stack trace about `undefined`
+- [x] `node --test "test/**/*.test.js"` runs and passes (30 tests)
+- [x] `harness.load("NotificationLogic.js")` returns the file's declarations and no ambient globals
+- [x] Tests cover known-good and known-bad input for real upstream functions — `parseExecArgv` fail-closed cases, `popupFileName`, `isEphemeralApp` — proving the harness exercises behavior rather than just importing
+- [x] Loading a nonexistent path fails with a message naming the path and where it looked
 
 **Verification:**
-- [ ] `node --test` → all pass
-- [ ] `git diff upstream -- NotificationLogic.js` → empty (the harness reads it, never writes it)
-- [ ] `./scripts/check-delta.sh` → still exits 0
-- [ ] `./install.sh` → `test/` is not copied into the plugin directory
+- [x] `node --test "test/**/*.test.js"` → all pass
+- [x] `git diff upstream -- NotificationLogic.js` → empty (the harness reads it, never writes it)
+- [x] `./scripts/check-delta.sh` → still exits 0
+- [x] `./install.sh` → `test/` is not copied into the plugin directory
+
+**Design change made during the task.** The harness first ran resources in a
+fresh `vm` context, which is the obvious choice and quietly wrong: every value
+crossing back out carried that realm's prototypes, so `deepStrictEqual` failed
+with "same structure but not reference-equal" on an array that was correct in
+every observable way. Since `groupPopups`, `parseSettings` and `popupRoles` all
+return arrays and objects, all six remaining modules would have paid a tax to
+buy isolation none of them needed. The harness now wraps the source in a
+function and runs it in the host realm — which keeps declarations out of the
+host global just as well, while QML-only globals stay absent from node either
+way. Pinned by a regression test.
+
+**Second command correction.** `test/harness.js` was itself being run as a test
+file: node's default discovery matches every `.js` under `test/`, so a helper
+with no assertions reported as a passing test and inflated the count. The
+command is now `node --test "test/**/*.test.js"`, scoped and quoted.
 
 **Dependencies:** None (parallelizable with Tasks 1-2)
 
-**Files likely touched:**
+**Files touched:**
 - `test/harness.js`
 - `test/harness.test.js`
+- `docs/spec/SPEC.md` (test command, and the harness description)
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** S (3 files)
 
 ---
 
@@ -216,7 +233,7 @@ question.
 ## Checkpoint B: Module complete
 
 - [ ] Every acceptance criterion in `docs/spec/SPEC-fork-seam.md` is met
-- [ ] `node --test` passes
+- [ ] `node --test "test/**/*.test.js"` passes
 - [ ] `./scripts/check-delta.sh` passes, and has been seen to fail on each check
 - [ ] `qmllint Service.qml` reports no warning upstream does not also report
 - [ ] `git merge upstream` is a no-op

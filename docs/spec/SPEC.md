@@ -85,10 +85,13 @@ No runtime dependency may be added. `jq` (already required by `install.sh`) and
 # Install into the shell and ask it to rescan
 ./install.sh
 
-# Run the unit tests (no dependencies, no package.json). Bare, with no path:
-# node 26 resolves a directory argument as a module and errors out.
-node --test
-node --test test/one-file.test.js    # a single file, when iterating
+# Run the unit tests (no dependencies, no package.json). The glob is quoted so
+# the shell passes it through, and scoped to *.test.js so helper files like
+# test/harness.js are not run as empty test files and counted in the total.
+# Note: a bare directory argument (`node --test test/`) errors on node 26 --
+# it resolves the directory as a module.
+node --test "test/**/*.test.js"
+node --test test/harness.test.js     # a single file, when iterating
 
 # Lint every QML file; compare the output against upstream's own baseline
 /usr/lib/qt6/bin/qmllint Service.qml Center.qml components/*.qml
@@ -209,27 +212,28 @@ function durationFor(urgency, expireTimeout) {
 Three levels, because QML under a live compositor cannot be unit tested and
 pretending otherwise produces tests that assert nothing.
 
-**1. Unit — pure logic, `node --test`.** Everything decidable without a
+**1. Unit — pure logic, `node --test "test/**/*.test.js"`.** Everything decidable without a
 screen lives in `NotificationPolicy.js` and is tested there. This is the
 primary quality gate and the reason the policy file exists at all.
 
-QML `.js` resources have no `export`, so `test/harness.js` loads them into a
-fresh V8 context and returns the declared functions:
+QML `.js` resources have no `export`, so `test/harness.js` reads one, wraps it
+in a function, and returns what it declares:
 
 ```js
-// test/harness.js -- QML JS resources declare bare functions with no exports,
-// so read the file and run it in a context we can then read the names out of.
-var fs = require("node:fs")
-var vm = require("node:vm")
+var harness = require("./harness.js")
 
-function load(relativePath) {
-  var context = { Date: Date, Math: Math, JSON: JSON, console: console }
-  vm.runInNewContext(fs.readFileSync(__dirname + "/../" + relativePath, "utf8"), context)
-  return context
-}
-
-module.exports = { load: load }
+var logic = harness.load("NotificationLogic.js")
+assert.strictEqual(logic.parseExecArgv('["-rf"]'), null)
 ```
+
+It runs the source in the host realm rather than in a fresh `vm` context. A
+fresh context is the obvious choice and quietly wrong: values crossing back out
+carry that realm's prototypes, so `deepStrictEqual` fails on an array that is
+correct in every observable way. A function wrapper keeps declarations out of
+the host global just as well, and QML-only globals (`Qt`, `Quickshell`,
+`NotificationUrgency`) are absent from node either way — which is the property
+that actually matters, and the reason `durationFor()` takes the urgency enum as
+an argument rather than importing it.
 
 Coverage expectation: every exported function in `NotificationPolicy.js` has
 tests for its happy path, its malformed input, and its boundary values.
@@ -260,7 +264,7 @@ checklist has been walked on a live shell.
   byte-identical to upstream. `check-delta.sh` fails the moment they are not.
 - Put new logic in a sidecar file. `Service.qml` receives hooks, never bodies.
 - Mark every `Service.qml` hook with `// fork:` and a spec reference.
-- Run `node --test` and `./scripts/check-delta.sh` before every commit.
+- Run `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` before every commit.
 - Coerce and range-check every value that came from a notification, a JSON
   file, or an IPC argument.
 - Write the *why* in comments, in upstream's voice.
@@ -314,7 +318,7 @@ The initiative is done when all of the following hold on a live shell:
    Clear all empties both the list and `~/.local/state/omarchy/notifications/history/`.
 4. Clicking a history entry with a stored `execArgv` runs that action.
 5. A critical notification is never auto-dismissed and never evicted by the cap.
-6. `node --test` passes, `./scripts/check-delta.sh` passes, and `qmllint`
+6. `node --test "test/**/*.test.js"` passes, `./scripts/check-delta.sh` passes, and `qmllint`
    reports nothing upstream does not also report.
 7. `git merge upstream` for a vendored omarchy 4.0.1 drop is a no-op, and the
    `Service.qml` delta is within the budget set in `SPEC-fork-seam.md`.
