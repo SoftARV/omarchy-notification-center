@@ -40,9 +40,10 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // Toasts are fixed to the top-center of the screen. They only clear the omarchy bar
-  // when the bar occupies the top or right edge, so left/bottom bars do not
-  // pull notification popups away from the expected top-right location.
+  // Toasts are fixed to the top-center of the screen (upstream puts them in the
+  // top-right corner). Centered, only the bar's top margin is applied: the
+  // right margin popupPlacement still computes has nothing to hold the column
+  // off, so a left/right/bottom bar no longer shifts popups sideways.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
@@ -353,18 +354,19 @@ Item {
   }
 
   // Run the popup's click action, then dismiss. Omarchy's own toasts carry the
-  // action as a command in the `exec` role (see execFromHints), which the
-  // persistence files preserve, so restored toasts stay clickable. Third-party
-  // clients register a libnotify action under the canonical identifier
-  // "default" instead; that one only works while the sender is still live.
+  // action as an argv vector in the `execArgv` role (see execArgvFromHints),
+  // which the persistence files preserve, so restored toasts stay clickable.
+  // Third-party clients register a libnotify action under the canonical
+  // identifier "default" instead; that one only works while the sender is live.
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
-    var command = entry ? String(entry.exec || "") : ""
-    if (command) {
-      // Detached so the launched command outlives the shell process, which the
-      // installer toasts depend on: they restart the shell as their first act.
-      Util.execDetached(command)
+
+    // Run the argv (via Util.execArgv, no shell interpretation). Detached so it
+    // outlives the shell, which installer toasts depend on: they restart it.
+    var argv = NotificationLogic.parseExecArgv(entry ? entry.execArgv : "")
+    if (argv) {
+      Util.execArgv(argv)
       dismissPopup(index)
       return
     }
@@ -665,7 +667,7 @@ Item {
         body: row.body,
         image: row.image,
         glyph: row.glyph || "",
-        exec: row.exec || "",
+        execArgv: row.execArgv || "",
         urgency: row.urgency,
         timestamp: row.timestamp
       }, imagesDir).entry)
@@ -689,7 +691,7 @@ Item {
         body: "",
         image: "",
         glyph: "󰂚",
-        exec: "",
+        execArgv: "",
         urgency: NotificationUrgency.Low,
         expireTimeout: 0,
         timestamp: Date.now()
