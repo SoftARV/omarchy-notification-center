@@ -76,5 +76,6 @@ Compare against upstream rather than expecting silence.
 
 ## License
 
-MIT, the same as Omarchy. Nearly every line here is upstream's, so upstream's
-copyright is kept alongside the fork's — see `LICENSE`.
+MIT, the same as [Omarchy](https://github.com/basecamp/omarchy), which this is
+a fork of. Nearly every line here is upstream's, so upstream's copyright notice
+is kept in `LICENSE` alongside the fork's rather than replaced by it.
