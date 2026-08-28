@@ -1,0 +1,18 @@
+# Omarchy writes Service.qml.bak.<epoch> beside the installed plugin whenever
+# it rewrites a cloned file. They are snapshots of a moment, not history.
+*.bak.*
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local scratch
+tmp/
+scratch/
+*.log
+
+# Local Claude rules: depend on locally installed skills, not shareable.
+CLAUDE.local.md
