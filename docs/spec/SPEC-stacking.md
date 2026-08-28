@@ -1,0 +1,137 @@
+# Spec: stacking
+
+Module id `stacking`. Depends on `settings`. Provides the grouped-slot view
+consumed by `popup-cap`.
+
+## Objective
+
+Twelve Slack pings should occupy one card's worth of screen, not twelve.
+Same-origin notifications collapse into a shallow visual deck that fans out on
+hover so each is still individually readable, clickable and dismissable.
+
+## Design
+
+### Grouping key
+
+`app` (the notification's `appName`), normalized: trimmed, lowercased.
+Notifications with an empty `app` are never grouped — an empty key would herd
+unrelated senders into one deck.
+
+Rows restored from disk or replayed from history group like any other. They
+carry `app`, which is all the key needs.
+
+### The grouped view
+
+`popupModel` stays exactly as upstream built it: flat, newest-first, the single
+source of truth for restore, replaces_id, archive and dismissal. Nothing in
+this module writes to it. A sidecar computes a *view*:
+
+```js
+// NotificationPolicy.js
+// [{ key, app, rows: [rowRef, ...], newest }] in first-appearance order,
+// rows newest-first within a group. Grouping off yields one row per group.
+function groupPopups(rows, groupByApp)
+```
+
+`NotificationState.qml` exposes `state.groups`, recomputed on
+`popupModel.countChanged`, on `settingsChanged`, and after `refreshPopup`
+rewrites a row. The Repeater binds to `state.groups` (hook 7).
+
+Recompute-on-change rather than an incrementally maintained model: with a cap
+of at most 20 rows the cost is nothing, and incremental maintenance of a
+grouped model is where the subtle bugs live.
+
+### Rendering
+
+`components/NotificationDeck.qml` renders one group.
+
+**Collapsed** (default, group of *n* > 1): the newest row drawn as a full
+`NotificationCard`; up to two ghost edges peeking below it, each offset ~4px
+down, scaled ~0.98, progressively dimmed, drawn *behind*; a count badge showing
+*n* in the card's corner. A group of 1 renders as a plain card with no badge
+and no ghosts — indistinguishable from today.
+
+**Expanded** (any pointer inside the deck): the group's rows fan into a normal
+vertical column with standard spacing, each a full card with its own close
+button and click target. The transition is a height/opacity animation on the
+column, ~160ms, matching the shell's existing animation durations.
+
+### Timers
+
+Each row keeps its own independent countdown, exactly as it does today — this
+module does not change lifetime semantics. Consequences:
+
+- When the front card of a collapsed deck expires, the next becomes the face
+  and the count drops. The deck shrinks naturally to a single card, then to
+  nothing.
+- Hovering **anywhere in the deck** pauses **every** row in it. Upstream pauses
+  per-card on hover; extending that to the group is required, or a card would
+  expire out from under the pointer while it is being read in an expanded deck.
+
+The lifetime timer and its hover-pause move out of `Service.qml`'s Repeater
+delegate into `components/PopupSlot.qml` verbatim, so `NotificationDeck` can
+compose slots. Moving it unchanged is what keeps hook 7's conflict resolution
+mechanical.
+
+### Dismissal by identity, not index
+
+This is the module's main hazard. `service.dismissPopup(index)` takes a
+`popupModel` index, and inside a nested deck Repeater the local index is not
+that index. Capturing an outer index is worse: it goes stale the moment any row
+is removed.
+
+So `NotificationState` gains:
+
+```qml
+function indexOfRow(originalId, timestamp)   // -1 when gone
+function dismissRow(originalId, timestamp)
+function invokeRow(originalId, timestamp)
+```
+
+resolving against `popupModel` at call time. `originalId` + `timestamp` is
+already this codebase's row identity — it is what `popupFileName()` is built
+from. Decks call these; nothing in a deck ever holds an index. `SPEC.md` lists
+index-based dismissal under **Never** for this reason.
+
+## Acceptance Criteria
+
+- Five notifications from one app produce one deck showing a count of 5.
+- Notifications from three apps produce three decks, in first-appearance order.
+- One notification produces a card visually identical to today's.
+- Hovering a collapsed deck expands it; every card in it is independently
+  readable, closable and clickable.
+- Hovering anywhere in a deck pauses every countdown in it; leaving resumes them.
+- Dismissing the middle card of an expanded deck removes that notification and
+  no other, and the deck re-lays out without flicker.
+- `groupByApp: false` renders exactly today's flat stack.
+- Toggling `groupByApp` while toasts are on screen re-lays them out live.
+- A `replaces_id` update to a grouped notification updates in place without
+  reordering or duplicating the deck.
+- A group whose rows all expire leaves no empty deck behind.
+- Notifications with an empty `app` never share a deck.
+
+## Verification
+
+```sh
+node --test test/stacking.test.js     # groupPopups: ordering, empty keys, toggle
+./scripts/smoke.sh                    # 5 from one app, 3 from another, 1 critical
+# then, by hand: hover to expand, close a middle card, toggle grouping live
+omarchy-shell notifications setGrouping off
+```
+
+## Risks
+
+- **Hook 7 is the largest single change to `Service.qml`.** Mitigated by moving
+  the delegate body verbatim into `PopupSlot.qml` — see `SPEC-fork-seam.md`.
+- **Nested Repeater incubation.** Upstream already wraps model mutation in
+  `Qt.callLater` to dodge `QV4::Object::insertMember` crashes when a Repeater is
+  mid-incubation. A Repeater of Repeaters widens that window. Every mutation
+  path reached from a deck must keep the `Qt.callLater` discipline.
+- **Recompute churn.** `state.groups` rebuilding on every row change re-creates
+  delegates unless the group objects are stable. If cards visibly flicker on
+  insert, the fix is keying delegates by group key, not abandoning the
+  recompute model.
+- **Expansion near the screen edge.** A deck of eight expanding downward can
+  run off-screen — the exact clutter this initiative exists to remove. Cap the
+  expanded fan at a readable number (proposed: 5, with "+3 more" routing to the
+  center) rather than letting it grow unbounded.
