@@ -57,7 +57,7 @@ can break a toast, its scope is wrong.
   the habit it needs to build is "run it, expect green".
 - **The test scaffold lands here, not in `settings`.** `fork-seam`'s objective
   is making the other six modules possible, and every one of them has
-  `node --test test/` in its Definition of Done. Putting it in `settings` would
+  `node --test` in its Definition of Done. Putting it in `settings` would
   make `settings` carry scaffolding unrelated to settings. **This extends
   `SPEC-fork-seam.md`'s acceptance criteria — flagged in Open Questions.**
 - **No `package.json`, ever.** `node --test` and `node:assert` are built in.

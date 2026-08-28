@@ -7,7 +7,7 @@ Every task also clears the project-wide Definition of Done in `docs/spec/SPEC.md
 
 ## Phase 1: The guard
 
-## Task 1: Guard the byte-identical upstream files
+## Task 1: Guard the byte-identical upstream files  [DONE]
 
 **Description:** Create `scripts/check-delta.sh` with its first and most
 important check: `NotificationLogic.js` and `components/NotificationCard.qml`
@@ -17,23 +17,33 @@ current tree — so the script is green from its first commit and the habit of
 running it can start immediately.
 
 **Acceptance criteria:**
-- [ ] `scripts/check-delta.sh` exists, is executable, and exits 0 on the current tree
-- [ ] It exits non-zero and names the offending file when either guarded file differs from `upstream`
-- [ ] It exits 0 with an explanatory note, not an error, when the `upstream` branch is absent
+- [x] `scripts/check-delta.sh` exists, is executable, and exits 0 on the current tree
+- [x] It exits non-zero and names the offending file when either guarded file differs from `upstream`
+- [x] It exits 0 with an explanatory note, not an error, when the `upstream` branch is absent
 
 **Verification:**
-- [ ] `./scripts/check-delta.sh` → exits 0
-- [ ] `echo "" >> NotificationLogic.js && ./scripts/check-delta.sh` → non-zero, names the file; then `git checkout NotificationLogic.js`
-- [ ] Same negative test for `components/NotificationCard.qml`
-- [ ] Works against an uncommitted edit (dirty tree), not just committed state
-- [ ] `git branch -m upstream upstream-tmp && ./scripts/check-delta.sh` → exits 0 with a note; then rename back
+- [x] `./scripts/check-delta.sh` → exits 0
+- [x] `echo "" >> NotificationLogic.js && ./scripts/check-delta.sh` → non-zero, names the file; then `git checkout NotificationLogic.js`
+- [x] Same negative test for `components/NotificationCard.qml`
+- [x] Works against an uncommitted edit (dirty tree), not just committed state
+- [x] `git branch -m upstream upstream-tmp && ./scripts/check-delta.sh` → exits 0 with a note; then rename back
+- [x] Also covered automatically: 9 tests in `test/check-delta.test.js`, run against a
+      throwaway fixture repo so no negative case ever touches this working tree
+- [x] Deletion of a verbatim file is caught (not in the original list; found while testing)
+- [x] Running outside a git repository fails cleanly rather than checking nothing
 
 **Dependencies:** None
 
-**Files likely touched:**
+**Files touched:**
 - `scripts/check-delta.sh`
+- `test/check-delta.test.js`
+- `docs/spec/SPEC.md` (corrected the documented test command -- see note below)
 
-**Estimated scope:** S (1 file)
+**Estimated scope:** S (3 files)
+
+**Note:** `SPEC.md` documented `node --test test/`, which errors on node 26 --
+a directory argument is resolved as a module. Corrected to bare `node --test`
+throughout, with the reason recorded in the command block so nobody re-adds it.
 
 ---
 
@@ -102,13 +112,13 @@ context globals (`Date`, `Math`, `JSON`, `console`) must not leak into the
 returned surface, or tests will assert against the wrong thing.
 
 **Acceptance criteria:**
-- [ ] `node --test test/` runs and passes
+- [ ] `node --test` runs and passes
 - [ ] `harness.load("NotificationLogic.js")` returns the file's declared functions and none of the seeded globals
 - [ ] Tests cover a known-good and a known-bad input for at least one real upstream function, proving the harness exercises behavior rather than just importing
 - [ ] Loading a nonexistent path fails with a clear message, not a stack trace about `undefined`
 
 **Verification:**
-- [ ] `node --test test/` → all pass
+- [ ] `node --test` → all pass
 - [ ] `git diff upstream -- NotificationLogic.js` → empty (the harness reads it, never writes it)
 - [ ] `./scripts/check-delta.sh` → still exits 0
 - [ ] `./install.sh` → `test/` is not copied into the plugin directory
@@ -186,7 +196,7 @@ question.
 ## Checkpoint B: Module complete
 
 - [ ] Every acceptance criterion in `docs/spec/SPEC-fork-seam.md` is met
-- [ ] `node --test test/` passes
+- [ ] `node --test` passes
 - [ ] `./scripts/check-delta.sh` passes, and has been seen to fail on each check
 - [ ] `qmllint Service.qml` reports no warning upstream does not also report
 - [ ] `git merge upstream` is a no-op
