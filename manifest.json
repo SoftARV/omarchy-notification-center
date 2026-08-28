@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.notifications",
-  "name": "Notifications",
+  "id": "nec.notifications",
+  "name": "My Notifications",
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Notification daemon, popups, DND, and history",
@@ -11,5 +11,8 @@
   "keepLoaded": true,
   "entryPoints": {
     "service": "Service.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.notifications"
   }
 }

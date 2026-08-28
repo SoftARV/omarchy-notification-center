@@ -40,7 +40,7 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // Toasts are fixed to the top-right corner. They only clear the omarchy bar
+  // Toasts are fixed to the top-center of the screen. They only clear the omarchy bar
   // when the bar occupies the top or right edge, so left/bottom bars do not
   // pull notification popups away from the expected top-right location.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
@@ -978,10 +978,9 @@ Item {
 
       ColumnLayout {
         id: popupColumn
-        anchors.right: parent.right
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: popupWindow.popupPlacement.margins.top
-        anchors.rightMargin: popupWindow.popupPlacement.margins.right
         spacing: Style.space(8)
 
         Repeater {
@@ -1006,7 +1005,7 @@ Item {
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
-            Layout.alignment: Qt.AlignRight
+            Layout.alignment: Qt.AlignHCenter
             implicitHeight: card.implicitHeight
 
             readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
@@ -1039,7 +1038,7 @@ Item {
 
             NotificationCard {
               id: card
-              anchors.right: parent.right
+              anchors.horizontalCenter: parent.horizontalCenter
               app: cardSlot.app
               appIcon: cardSlot.appIcon
               summary: cardSlot.summary
