@@ -33,9 +33,9 @@ this module writes to it. A sidecar computes a *view*:
 function groupPopups(rows, groupByApp)
 ```
 
-`NotificationState.qml` exposes `state.groups`, recomputed on
+`NotificationState.qml` exposes `forkState.groups`, recomputed on
 `popupModel.countChanged`, on `settingsChanged`, and after `refreshPopup`
-rewrites a row. The Repeater binds to `state.groups` (hook 7).
+rewrites a row. The Repeater binds to `forkState.groups` (hook 7).
 
 Recompute-on-change rather than an incrementally maintained model: with a cap
 of at most 20 rows the cost is nothing, and incremental maintenance of a
@@ -127,7 +127,7 @@ omarchy-shell notifications setGrouping off
   `Qt.callLater` to dodge `QV4::Object::insertMember` crashes when a Repeater is
   mid-incubation. A Repeater of Repeaters widens that window. Every mutation
   path reached from a deck must keep the `Qt.callLater` discipline.
-- **Recompute churn.** `state.groups` rebuilding on every row change re-creates
+- **Recompute churn.** `forkState.groups` rebuilding on every row change re-creates
   delegates unless the group objects are stable. If cards visibly flicker on
   insert, the fix is keying delegates by group key, not abandoning the
   recompute model.

@@ -45,14 +45,24 @@ sees no behavior change except the new cap and grouping — which are the point.
 Every field is clamped, never rejected. A corrupt file must not cost the user
 their notifications.
 
-| Field | Range | On invalid |
-|---|---|---|
-| `popupDurationMs.*` | 0 or 500–300000 | that urgency's default |
-| `maxPopupDurationMs` | 1000–300000 | 30000 |
-| `maxVisiblePopups` | 1–20 | 4 |
-| `groupByApp` | boolean | true |
-| `historyLimit` | 1–500 | 100 |
-| `historyLastSeen` | finite ≥ 0 | 0 |
+**Out of range is not the same as invalid.** A number past a bound is a value
+the user meant — 9999 visible popups is an ambition, not a typo — so it clamps
+to the bound. A string, a `NaN` or an `Infinity` is not a value at all, so it
+falls back to the default. Collapsing the two would turn one bad character in a
+hand-edited file into a setting the user never chose and cannot see.
+
+| Field | Range | Out of range | Invalid type |
+|---|---|---|---|
+| `popupDurationMs.*` | 0, or 500–300000 | nearest bound | that urgency's default |
+| `maxPopupDurationMs` | 1000–300000 | nearest bound | 30000 |
+| `maxVisiblePopups` | 1–20 | nearest bound | 4 |
+| `groupByApp` | boolean | — | true |
+| `historyLimit` | 1–500 | nearest bound | 100 |
+| `historyLastSeen` | finite ≥ 0 | 0 | 0 |
+
+`0` is the sentinel for "never auto-dismiss" and nothing rounds into it: a 1 ms
+duration is a mistake, and reading it as "never" would be the opposite of what
+was asked. It clamps up to 500.
 
 A whole-file parse failure logs one warning and yields defaults, matching
 upstream's `parseSettings` behavior.
@@ -71,6 +81,13 @@ rest, which is the only compatibility that matters.
   `clampSettings(obj)`, `serializeSettings(obj)`. Pure, fully unit-tested.
   Upstream's `NotificationLogic.parseSettings` is left untouched and unused by
   the fork path.
+
+  `parseSettings` returns `{ error, errorMessage, settings, needsRewrite }`.
+  `needsRewrite` answers "does the file on disk differ from what we would write
+  now", which covers a v3 document, a legacy payload, an out-of-range value and
+  a whitespace edit in one comparison. It is derived from the serialized form
+  rather than from a version number, so an already-canonical file is never
+  rewritten on startup.
 - **`NotificationState.qml`** — a QtObject mounted in `Service.qml` (hook 2)
   holding `property var settings`, a `settingsChanged` signal, and the setter
   functions. It reuses the service's existing `FileView`, save timer and
@@ -81,31 +98,37 @@ rest, which is the only compatibility that matters.
 ### Runtime interface (the contract other modules consume)
 
 ```qml
-state.settings                       // clamped, always complete, never null
-state.settingsChanged()              // emitted after any change lands
-state.setDuration(urgencyName, ms)   // "low" | "normal" | "critical"
-state.setMaxVisible(n)
-state.setGrouping(on)
-state.setHistoryLimit(n)
+forkState.settings                       // clamped, always complete, never null
+forkState.settingsChanged()              // emitted after any change lands
+forkState.setDuration(urgencyName, ms)   // "low" | "normal" | "critical"
+forkState.setMaxVisible(n)
+forkState.setGrouping(on)
+forkState.setHistoryLimit(n)
 ```
 
-Every setter clamps, writes through to `state.settings`, emits
+Every setter clamps, writes through to `forkState.settings`, emits
 `settingsChanged`, and calls the existing debounced save. Changes apply to the
 next notification with no restart; the 200ms debounce means a slider drag
 writes once.
 
 ### IPC
 
-Added to the existing `notifications` target. Adding IPC names is *ask first*
-per `SPEC.md`; these are proposed, not assumed:
+On its own target, `notification-settings`, declared by an `IpcHandler` inside
+`NotificationState.qml`:
 
 ```
-notifications getSettings            -> JSON string
-notifications setDuration <urgency> <ms>  -> "ok" | "invalid"
-notifications setMaxVisible <n>      -> "ok" | "invalid"
-notifications setGrouping <on|off>   -> "ok" | "invalid"
-notifications setHistoryLimit <n>    -> "ok" | "invalid"
+notification-settings getSettings                 -> JSON string
+notification-settings setDuration <urgency> <ms>  -> "ok" | "invalid"
+notification-settings setMaxVisible <n>           -> "ok" | "invalid"
+notification-settings setGrouping <on|off>        -> "ok" | "invalid"
+notification-settings setHistoryLimit <n>         -> "ok" | "invalid"
 ```
+
+Not added to upstream's `notifications` target, for two reasons. It rides in on
+the mount that hook 2 already performs, so it costs no further `Service.qml`
+hook and no amendment to the inventory. And an upstream release adding its own
+`setDuration` to `notifications` would then be a merge conflict over a name;
+on a separate target it cannot be.
 
 Every argument arrives as a string from bash and is coerced and clamped like
 any other untrusted input.
@@ -118,10 +141,12 @@ any other untrusted input.
   at version 4.
 - `{"version":4,"maxVisiblePopups":9999,"groupByApp":"yes","historyLimit":-1}`
   clamps to 20 / true / 1 and logs no error.
+- An IPC setter follows the same rule: an out-of-range number clamps and returns
+  `ok`, a non-number returns `invalid` and changes nothing.
 - A file of invalid JSON logs exactly one warning and yields full defaults.
 - A setter's effect is visible on the next notification without a shell restart.
 - Ten setter calls in one second produce one file write.
-- `state.settings` is never null and never missing a key, at any point during
+- `forkState.settings` is never null and never missing a key, at any point during
   startup — consumers may read it unconditionally.
 
 ## Verification
@@ -130,7 +155,8 @@ any other untrusted input.
 node --test test/settings.test.js
 rm ~/.local/state/omarchy/notifications.json && omarchy restart shell
 notify-send hi && cat ~/.local/state/omarchy/notifications.json   # v4, defaults
-omarchy-shell notifications setMaxVisible 2 && omarchy-shell notifications getSettings
+omarchy-shell notification-settings setMaxVisible 2
+omarchy-shell notification-settings getSettings
 printf '{' > ~/.local/state/omarchy/notifications.json && omarchy restart shell  # one warning, defaults
 ```
 
@@ -139,7 +165,7 @@ printf '{' > ~/.local/state/omarchy/notifications.json && omarchy restart shell 
 - **Two writers on one file.** `NotificationState` must go through the
   service's existing `FileView` and save timer. A second `FileView` on the same
   path would race the atomic write and could lose `dnd`.
-- **Startup ordering.** Consumers read `state.settings` before the file loads.
+- **Startup ordering.** Consumers read `forkState.settings` before the file loads.
   Initializing it to `defaultSettings()` at construction — not null — is what
   makes the "never null" criterion hold, and it must be done at declaration.
 - **Schema churn.** Bumping to v5 later costs another migration path. The

@@ -1,10 +1,5 @@
-// Tests for the QML-JS harness.
-//
-// The harness is the load-bearing piece of this project's testing strategy: if
-// it cannot load a QML .js resource, none of the pure logic in NotificationPolicy.js
-// can be unit tested and every module falls back to manual checks. So it gets
-// tested against a real upstream file rather than a fixture -- a harness that
-// works on a contrived input and not on NotificationLogic.js is worthless.
+// Tested against a real upstream file rather than a fixture: a harness that
+// works on contrived input but not on NotificationLogic.js is worthless.
 
 var test = require("node:test")
 var assert = require("node:assert")
@@ -29,10 +24,8 @@ test("returns only declarations, not ambient globals", function() {
   assert.strictEqual(logic.Date, undefined)
 })
 
-// Proving the harness exercises behavior rather than merely importing names.
-// parseExecArgv is the right function to prove it on: it is the fork's only
-// path from notification content to process execution, so its fail-closed
-// behavior is the one piece of upstream logic worth being certain about.
+// parseExecArgv is the fork's only path from notification content to process
+// execution, so its fail-closed behavior is worth being certain about.
 test("runs real logic: parseExecArgv accepts a well-formed argv", function() {
   var logic = harness.load("NotificationLogic.js")
   assert.deepStrictEqual(
@@ -94,14 +87,8 @@ test("paths resolve from the repo root, not the test directory", function() {
   assert.strictEqual(typeof logic.parseExecArgv, "function")
 })
 
-// Regression. The harness first ran resources in a fresh vm context, which is
-// the obvious choice and quietly wrong: every value crossing back out carried
-// that realm's prototypes, so deepStrictEqual reported "same structure but not
-// reference-equal" on an array that was correct in every observable way.
-//
-// Six modules will assert on returned arrays and objects -- groupPopups,
-// parseSettings, popupRoles. Had this stayed, each of them would have paid a
-// tax to buy isolation none of them needed.
+// Regression. A fresh vm context returned foreign prototypes, so
+// deepStrictEqual failed on arrays that were correct in every observable way.
 test("returned values carry host prototypes, so deepStrictEqual works", function() {
   var logic = harness.load("NotificationLogic.js")
 

@@ -30,20 +30,20 @@ per archive. Both are already off the UI thread on the serialized
 
 ### Reading
 
-`state.historyModel` — a `ListModel` with the same roles as `popupModel`,
+`forkState.historyModel` — a `ListModel` with the same roles as `popupModel`,
 newest first. Populated by a read through the existing `popupFileQueue`, using
 upstream's own `awk 1 "$1"/*.json` pattern (`awk`, not `cat`, so a torn file
 missing its trailing newline cannot glue itself onto the next).
 
 The read is **lazy and on demand**: the model is empty until something asks. A
 service that keeps a hundred parsed entries resident for a panel nobody opened
-is wasted memory. `state.loadHistory()` triggers it; `center-ui` calls it when
+is wasted memory. `forkState.loadHistory()` triggers it; `center-ui` calls it when
 the panel opens.
 
 ### Change notification without a file watcher
 
 The service is the only writer, so it can say when it wrote:
-`state.historyRevision`, an integer bumped after each archive job and after a
+`forkState.historyRevision`, an integer bumped after each archive job and after a
 clear (hooks 8 and 9). Readers compare the revision they rendered against the
 current one and re-read when it differs and they are visible.
 
@@ -56,8 +56,8 @@ both cheaper and correct.
 `historyLastSeen` (a millisecond timestamp in `notifications.json`, owned by
 this module, stored by `settings`) marks the last time the user looked.
 
-`state.unreadCount` is the number of history entries with
-`timestamp > historyLastSeen`. `state.markHistorySeen()` sets it to `Date.now()`
+`forkState.unreadCount` is the number of history entries with
+`timestamp > historyLastSeen`. `forkState.markHistorySeen()` sets it to `Date.now()`
 and zeroes the count.
 
 Counting requires knowing the entries, which the lazy model does not hold
@@ -76,13 +76,13 @@ unread badge is a bug the user cannot clear.
 ### Runtime interface (the contract `center-ui` consumes)
 
 ```qml
-state.historyModel          // ListModel, newest first, popupModel roles
-state.historyRevision       // int, bumped on any history write
-state.unreadCount           // int
-state.loadHistory()         // async; populates historyModel
-state.markHistorySeen()     // zeroes unreadCount, persists the timestamp
-state.clearHistory()        // wraps the service's, then bumps and resets
-state.invokeHistoryEntry(originalId, timestamp)   // runs a stored execArgv
+forkState.historyModel          // ListModel, newest first, popupModel roles
+forkState.historyRevision       // int, bumped on any history write
+forkState.unreadCount           // int
+forkState.loadHistory()         // async; populates historyModel
+forkState.markHistorySeen()     // zeroes unreadCount, persists the timestamp
+forkState.clearHistory()        // wraps the service's, then bumps and resets
+forkState.invokeHistoryEntry(originalId, timestamp)   // runs a stored execArgv
 ```
 
 `invokeHistoryEntry` runs the entry's persisted `execArgv` through

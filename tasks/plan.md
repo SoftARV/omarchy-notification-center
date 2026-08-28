@@ -1,131 +1,128 @@
-# Implementation Plan: fork-seam
+# Implementation Plan: settings
 
-Module `fork-seam` from `docs/spec/CAPABILITY-MAP.md`. First module in build
-order; nothing depends on anything else yet. Spec: `docs/spec/SPEC-fork-seam.md`.
-Project-wide conventions: `docs/spec/SPEC.md`.
+Module `settings` from [`docs/spec/CAPABILITY-MAP.md`](../docs/spec/CAPABILITY-MAP.md).
+Depends on `fork-seam`, which is merged. Spec:
+[`docs/spec/SPEC-settings.md`](../docs/spec/SPEC-settings.md).
+Project-wide conventions: [`docs/spec/SPEC.md`](../docs/spec/SPEC.md).
+
+Previous module's plan and task list are archived under
+[`tasks/fork-seam/`](fork-seam/plan.md).
 
 ## Overview
 
-Build the guard rails before the features that need them. `fork-seam` ships no
-user-visible behavior: it produces the script that fails when the fork drifts
-outside its budgeted hook points, the `// fork:` marker convention on the seven
-lines that already exist, the test scaffold every later module's Definition of
-Done depends on, and the docs that tell a future reader the rule.
+One place where the four knobs live — dismiss durations, visible cap, grouping,
+history limit — readable and writable at runtime, surviving a shell restart,
+and degrading to stock behavior when the file is missing or corrupt.
 
-Everything here is additive except four comment lines in `Service.qml`. No
-runtime behavior changes in this module. That is deliberate — if `fork-seam`
-can break a toast, its scope is wrong.
+Nothing consumes these values yet. `timing`, `stacking`, `popup-cap`,
+`history-store` and `center-ui` all read them, so this module is the one whose
+contract has to be right before anything is built on it. Its user-visible
+result is narrow on purpose: the file round-trips at version 4 and IPC can
+change a value.
 
-## What planning verified (so the plan doesn't rest on guesses)
+## What planning verified
 
-- **The test harness assumption holds.** `SPEC.md`'s entire testing strategy
-  rests on node being able to load a QML `.js` resource, which has no `export`.
-  Confirmed with node v26.7.0: `vm.runInNewContext` over `NotificationLogic.js`
-  yields all 27 declared functions, and `parseExecArgv` behaves identically to
-  QML (`["-rf"]` → `null`, `["notify-send","hi"]` → passthrough). There are no
-  QML-only globals (`Qt.*`, `Quickshell`, `console.*`) in that file. This was
-  the highest-risk unknown in the initiative and it is now closed.
-- **The current delta is 7 added / 7 deleted across 4 hunks in `Service.qml`**,
-  plus `manifest.json`. `NotificationLogic.js` and `components/NotificationCard.qml`
-  are byte-identical to `upstream`, as claimed.
-- **Both `upstream` and `origin/upstream` exist**, so the three-way base the
-  merge procedure depends on is real.
-- **`qmllint` is present** at `/usr/lib/qt6/bin/qmllint` and reports 32 warnings
-  on `Service.qml`, all from unresolvable `qs.*` imports — the baseline the
-  README already warns about.
+- **The live file is at `version: 3` with `dnd: false`.** Real migration
+  material, not a hypothetical. Migration will be tested against the actual
+  file, and the failure mode if it goes wrong is losing a `false` — recoverable,
+  which is why this is a safe place to be wrong.
+- **Upstream's `parseSettings` returns `{error, dnd, legacy}` and nothing more.**
+  It stays byte-identical and unused by the fork path;
+  `NotificationPolicy.parseSettings` supersedes it.
+- **`Service.qml` already owns the `FileView`, the 200 ms debounce timer, the
+  `settingsLoaded` re-entry guard and the `_hydrating` DND guard.** All four are
+  reused. The spec's "two writers on one file" risk is avoided by not opening a
+  second `FileView`, and the `_hydrating` guard must survive or hydration will
+  schedule a write on every startup.
+- **`Service.qml` never uses `state` unqualified** — only `stateDir` and prose.
+  So `id: state` would have worked; it was still renamed, see below.
+
+## Decisions taken before planning
+
+1. **IPC lives on its own target, `notification-settings`,** declared by an
+   `IpcHandler` inside `NotificationState.qml`. It rides in on the mount hook 2
+   already performs, so it costs **no further `Service.qml` hook** and no
+   amendment to the approved inventory. And an upstream release adding its own
+   `setDuration` to the `notifications` target cannot collide with it. This
+   supersedes what `SPEC-settings.md` originally proposed; the spec is amended.
+2. **The sidecar is mounted as `forkState`, not `state`.** `QQuickItem` has a
+   built-in `state` property and `Service.qml`'s root is an `Item`, so `state`
+   would shadow a built-in on every line that reads it. Renamed across all seven
+   specs while it costs nothing but a search-and-replace.
+3. **Five named setters**, not one generic `setSetting`. Each validates its own
+   argument, and a typo is an unknown-function error rather than a silent no-op.
 
 ## Architecture Decisions
 
-- **The budget counts ADDED lines, not changed lines.** `SPEC-fork-seam.md` says
-  "60 changed lines", but hook 7 deliberately *deletes* about sixty upstream
-  lines when the Repeater delegate body moves into `PopupSlot.qml`. Counting
-  added + deleted would blow the budget on the one hook designed to shrink the
-  conflict surface. Added lines are also the honest measure: a deleted block is
-  one conflict git reports once, while every added line is fork code that must
-  be re-reconciled forever. **This needs a one-word amendment to
-  `SPEC-fork-seam.md` — flagged in Open Questions.**
-- **Pure-deletion hunks get a marker comment.** Check 3 requires every changed
-  hunk to carry a `// fork:` marker, but a hunk that only deletes upstream lines
-  has no added line to put one on. Rather than exempting them — which would
-  create an unlabelled category of fork change, exactly what the check exists to
-  prevent — a pure-deletion hunk gains a one-line `// fork:` comment explaining
-  what was removed and why. It becomes a mixed hunk, the check applies
-  uniformly, and the deletion is self-documenting during a merge.
-- **`check-delta.sh` is built in two slices, each leaving a passing script.**
-  Slice one guards the two byte-identical files; slice two guards `Service.qml`.
-  A half-built guard that fails on a clean tree is worse than no guard, because
-  the habit it needs to build is "run it, expect green".
-- **The test scaffold lands here, not in `settings`.** `fork-seam`'s objective
-  is making the other six modules possible, and every one of them has
-  `node --test` in its Definition of Done. Putting it in `settings` would
-  make `settings` carry scaffolding unrelated to settings. **This extends
-  `SPEC-fork-seam.md`'s acceptance criteria — flagged in Open Questions.**
-- **No `package.json`, ever.** `node --test` and `node:assert` are built in.
-  `SPEC.md` forbids adding runtime dependencies and this repo ships as a plugin
-  directory, not an npm package.
+- **Pure logic first, wiring second.** `NotificationPolicy.js` holds every
+  decision that can be made without a shell: defaults, clamping, parsing,
+  serializing. It is the only part of this module that can be unit tested, so
+  it is where the correctness lives, and Task 1 exists to make it airtight
+  before any QML touches it.
+- **Clamp, never reject.** A corrupt or hostile settings file must not cost the
+  user their notifications. Every field out of range falls back to its default
+  and the rest of the file still loads. The only thing a parse failure buys is
+  one warning line.
+- **`forkState.settings` is initialised to `defaultSettings()` at declaration.**
+  Consumers read it before the file loads. Initialising to `null` and filling in
+  later would make every consumer in five modules write a null guard, and one of
+  them would forget.
+- **Setters and IPC land in the same task.** A setter with no caller cannot be
+  verified end-to-end — until `center-ui` exists, IPC is the only way to invoke
+  one. Splitting them would produce a task whose completion nobody can observe.
+- **Task 2 has no unit test, and the plan says so.** It is QML wiring: mounting
+  a component and pointing two function bodies at it. Its logic was tested in
+  Task 1; its verification is a live shell and `check-delta.sh`. Inventing a
+  test that asserts a file contains a string would be theatre.
 
 ## Dependency Graph
 
 ```
-T1  drift guard (checks 1)          T3  test scaffold        T5  ADR
-     │                                   (independent)           (independent)
+T1  NotificationPolicy.js -- schema, defaults, clamp, parse, serialize
+     │   (pure; the only unit-testable part of this module)
      ▼
-T2  markers + budget/label checks (2-4)
+T2  NotificationState.qml + Service.qml hooks 2 and 5
+     │   the file round-trips at v4 on a live shell
+     ▼
+  Checkpoint A -- migration is safe
      │
      ▼
-  Checkpoint A -- the guard is real
+T3  Setters + settingsChanged + IpcHandler on notification-settings
      │
      ▼
-T4  README (documents T1-T2's final behavior)
-     │
-     ▼
-  Checkpoint B -- module complete
+  Checkpoint B -- module complete, timing/stacking/history-store unblocked
 ```
 
-T3 and T5 are safe to parallelize with T1-T2: they share no files. T4 must
-follow T2, because it documents what the finished script actually does rather
-than what it was planned to do.
+Strictly sequential. Each task needs the one before it to exist, and there is
+nothing here worth parallelising.
 
 ## Task List
 
-Tasks and checkpoints are recorded in `tasks/todo.md`.
+Tasks and checkpoints are in [`tasks/todo.md`](todo.md).
 
-### Phase 1: The guard
-- [ ] Task 1: Guard the byte-identical upstream files
-- [ ] Task 2: Mark the existing fork lines and guard `Service.qml`
+### Phase 1: The schema
+- [ ] Task 1: `NotificationPolicy.js` — defaults, clamping, parse, serialize
+
+### Phase 2: The round trip
+- [ ] Task 2: Mount the sidecar and migrate the file to v4
 - [ ] Checkpoint A
 
-### Phase 2: The scaffold
-- [ ] Task 3: Test harness for QML JS resources
-
-### Phase 3: The record
-- [ ] Task 4: README — how the fork is structured
-- [ ] Task 5: ADR 0001 — the sidecar seam
+### Phase 3: Changing a value
+- [ ] Task 3: Setters and the `notification-settings` IPC target
 - [ ] Checkpoint B
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Hunk-parsing in bash is fiddly and easy to get subtly wrong, passing when it should fail | High — a guard that never fails is worse than none, it manufactures false confidence | Every check gets a negative test in Task 1/2 verification: deliberately break the tree, confirm the script fails and names the file. A guard is not done until it has been seen to fail. |
-| `git diff upstream` behaves differently on a dirty tree | Medium — the script is meant to run pre-commit, when the tree is always dirty | Verified during planning that `git diff upstream -- <path>` compares the branch tip to the working tree. Task 1 verification runs it against an uncommitted edit explicitly. |
-| The 60-line budget is a guess made before writing any hooks | Medium — a wrong budget either blocks real work or rubber-stamps drift | The budget is advisory in effect (no CI). When a module needs a hook outside the inventory that is an *ask first* per `SPEC.md`, and the table is amended in the same commit, never quietly exceeded. |
-| `// fork:` markers add lines, consuming budget to enforce the budget | Low | Four comment lines against a 60-line budget with 7 in use. Noted so the arithmetic isn't a surprise later. |
-| Adding comments to `Service.qml` could break QML parsing if inserted mid-expression | Low but real — a broken `Service.qml` means no notifications at all | Markers go on their own line above the construct, never inline in a binding. Task 2 verification restarts the shell and sends a real notification. |
+| Migration loses the user's `dnd` value | Medium — silent, and only noticed later when DND behaves wrong | Task 1 tests migration against the real v3 shape before any QML exists; Task 2 verifies the live file specifically, and the value is `false` today so a regression is recoverable |
+| Dropping upstream's `_hydrating` guard | Medium — hydration schedules a write on every startup, and the file is rewritten for no reason forever | Task 2's criteria include "starting the shell twice with no user action leaves the file's mtime unchanged the second time" |
+| Dropping the `settingsLoaded` re-entry guard | Medium — `FileView` fires `onLoaded` more than once at startup, so defaults could overwrite a loaded file | Preserved verbatim; the load path is delegated, not rewritten |
+| `forkState` constructed after `FileView` fires | High — a null sidecar at load time means settings silently never load | QML creates every object in a component before any `componentComplete`, so this is safe by construction; the mount is still declared early in the file, and Task 2 verifies a cold start |
+| Writing v4 breaks a downgrade | Low | Upstream's `parseSettings` reads `dnd` and ignores unknown keys, so a stock omarchy reading our v4 file behaves correctly. Verified by reading upstream's parser, not assumed |
+| The four knobs are stored but unread | Low, by design | `timing` is the next module and consumes two of them. Until then the acceptance criterion is the file round trip, not behavior |
 
 ## Open Questions
 
-All three resolved 2026-08-28. Kept here rather than deleted, so the reasoning
-survives for whoever reads this after the fact.
-
-1. **Amend the budget wording to "added lines"?** — **Yes.** `SPEC-fork-seam.md`
-   now says "60 added lines", with the reasoning recorded there: hook 7
-   deliberately deletes ~60 upstream lines, so a combined count would fail the
-   check on the one hook designed to shrink the conflict surface.
-2. **Accept the test scaffold as a `fork-seam` deliverable?** — **Yes.** Added
-   as an acceptance criterion in `SPEC-fork-seam.md`. Task 3 stands.
-3. **Is a `qmllint` comparison script wanted?** — **No.** Not built. The
-   `SPEC.md` rule ("qmllint reports nothing upstream does not also report")
-   stays a manual comparison against the ~32 import warnings. Recording the
-   consequence honestly: that line of the Definition of Done is eyeballed, not
-   enforced, and it is the one gate in this project with no tooling behind it.
+None blocking. The three that were open — IPC placement, the sidecar id, and
+setter shape — were settled before this plan was written and are recorded above.

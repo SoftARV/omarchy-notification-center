@@ -126,7 +126,7 @@ components/NotificationCard.qml      BYTE-IDENTICAL to upstream. Never edited.
 
 # --- sidecar files: 100% ours, upstream will never have them -------------
 NotificationPolicy.js                Pure logic: settings parse, duration, grouping, capping
-NotificationState.qml                Settings + grouping + cap state. One-line instantiation in Service.qml.
+NotificationState.qml                Settings + grouping + cap state. Mounted by one line in Service.qml.
 components/PopupSlot.qml             Lifetime timer + card, lifted out of Service.qml's Repeater delegate
 components/NotificationDeck.qml      Collapsed/expanded same-app deck
 Center.qml                           barWidget entry point: bell button + dropdown panel
@@ -175,17 +175,17 @@ upstream wrote them; a stylistic tell is a merge conflict waiting to happen.
 - Two-space indent, double-quoted strings, camelCase.
 - Coerce defensively at every boundary: `String(x || "")`, `Number(x || 0)`,
   then a finiteness check. Notification content is attacker-influenced.
-- Comments explain **why**, at paragraph length, and are the dominant form of
-  documentation in this codebase. A comment restating the code is noise; a
-  comment recording the crash that motivated a guard is the point.
+- Comments explain **why**, in **three lines at most** per block, file headers
+  included. A comment restating the code is noise; a comment recording the crash
+  that motivated a guard is the point — but it earns three lines, not a page.
+  Anything longer belongs in the spec or an ADR, with the comment pointing there.
+  Enforced by `test/comments.test.js`.
 
-Real example — this is the target, taken from `NotificationLogic.js`:
+Real example — upstream's own style, trimmed to the fork's three-line limit:
 
 ```js
-// Whether a refresh has anything to write. Each property a client updates
-// emits its own signal, and the catch-up refresh after a row is inserted
-// usually finds the object exactly as it was snapshotted -- without this,
-// one update would rewrite the file several times over.
+// Whether a refresh has anything to write. Without this, one update would
+// rewrite the file several times over.
 function popupRowChanged(row, updated) {
   var current = row || {}
   var next = updated || {}
@@ -203,7 +203,7 @@ greppable, countable by `check-delta.sh`, and unmistakable during a merge:
 ```qml
 // fork: durations come from settings, not the upstream constants -- SPEC-timing.md
 function durationFor(urgency, expireTimeout) {
-  return Policy.durationFor(urgency, expireTimeout, state.settings, NotificationUrgency)
+  return Policy.durationFor(urgency, expireTimeout, forkState.settings, NotificationUrgency)
 }
 ```
 

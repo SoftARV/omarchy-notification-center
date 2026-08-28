@@ -46,9 +46,9 @@ the widget can incubate before the service mounts.
 
 ### Bar button
 
-Bell glyph, `󰂚`. When `state.unreadCount > 0`, a count badge in the shell's
+Bell glyph, `󰂚`. When `forkState.unreadCount > 0`, a count badge in the shell's
 accent color; the glyph dims to the bar's normal foreground otherwise. Click
-toggles the panel. Opening it calls `state.markHistorySeen()`, so the badge
+toggles the panel. Opening it calls `forkState.markHistorySeen()`, so the badge
 clears on read rather than on dismissal of individual entries.
 
 Do-not-disturb is deliberately absent — it was not selected for this panel and
@@ -70,13 +70,13 @@ Toggle               Group by app
 NumberField          Keep history       1-500
 ```
 
-`components/HistoryList.qml` renders `state.historyModel` by reusing
+`components/HistoryList.qml` renders `forkState.historyModel` by reusing
 `components/NotificationCard.qml` — the same card the toasts use, byte-identical
 upstream, in a compact variant. Reusing it is why entries look right and why
 images and glyphs work with no new rendering code. Clicking an entry calls
-`state.invokeHistoryEntry(originalId, timestamp)`.
+`forkState.invokeHistoryEntry(originalId, timestamp)`.
 
-The list re-reads when `state.historyRevision` changes *and* the panel is open.
+The list re-reads when `forkState.historyRevision` changes *and* the panel is open.
 A closed panel does no work.
 
 `components/CenterSettings.qml` binds each control to a `state` setter. The

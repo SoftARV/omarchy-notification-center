@@ -1,24 +1,9 @@
 #!/bin/bash
-#
-# Fails when the fork has drifted outside the seam it is allowed to occupy.
-#
-# The whole strategy of this fork is that upstream's files stay upstream's, so
-# taking an omarchy release is `git merge upstream` rather than a re-application
-# by hand. That only holds if drift is caught the day it happens: a stray edit
-# to an upstream file is invisible until the merge conflict it causes months
-# later, by which point nobody remembers what the edit was for.
-#
-# Run it before every commit. See docs/spec/SPEC-fork-seam.md for the hook
-# inventory and the reasoning.
-#
-# Exit status:
-#   0  the fork is inside its seam (or there is no upstream branch to compare
-#      against, which is a missing comparison rather than a broken fork)
-#   1  drift, or the script could not do its job
+# Fails when the fork has drifted outside its seam. Exits 0 when inside it or
+# when there is no upstream branch to compare against; 1 on drift.
+# Reasoning and hook inventory: docs/spec/SPEC-fork-seam.md
 
-# No `set -e`: every check runs and every problem is reported. Finding out
-# about one violation per run, discovering the next only after fixing the
-# first, is how a pre-commit check becomes something people stop running.
+# No `set -e`: every check runs, so one run reports every problem.
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
@@ -48,10 +33,8 @@ if ! git rev-parse --verify --quiet "$UPSTREAM" >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------- check 1
-#
-# These two files carry no fork changes at all, ever. Every line of them is
-# upstream's, which is why an upstream release can rewrite them freely without
-# ever conflicting. New logic goes in a sidecar file upstream has never had.
+# These two files carry no fork changes, ever, so an upstream release can
+# rewrite them freely. New logic goes in a sidecar file instead.
 VERBATIM=(
   "NotificationLogic.js"
   "components/NotificationCard.qml"
@@ -73,14 +56,8 @@ for file in "${VERBATIM[@]}"; do
 done
 
 # ------------------------------------------------------------- checks 2-4
-#
-# Service.qml is upstream's file that the fork IS allowed to change -- it is
-# where the hooks live. So the question here is not "did it change", it is
-# "did it change more than agreed, and is every change labelled".
-#
-# Labelling is what makes a merge conflict readable a year from now. Landing in
-# a conflict on an unmarked line means reconstructing intent from the diff;
-# landing on a `// fork:` line means reading why it is there.
+# Service.qml is where the hooks live, so the question is not "did it change"
+# but "more than agreed, and is every change labelled".
 SEAM="Service.qml"
 BUDGET=${DELTA_BUDGET:-60}
 SPEC_DIR="docs/spec"
@@ -90,11 +67,8 @@ if [[ ! -f $SEAM ]]; then
   fail "$SEAM is missing"
 elif git rev-parse --verify --quiet "$UPSTREAM:$SEAM" >/dev/null 2>&1; then
 
-  # Added lines only. Hook 7 deliberately deletes ~60 upstream lines when the
-  # Repeater delegate body moves into a sidecar, so counting deletions would
-  # fail the one change designed to make merges cheaper. Added lines are the
-  # truer cost anyway: a deleted block is one conflict resolved the same way
-  # every time, while every added line is fork code re-reconciled forever.
+  # Added lines only. Hook 7 deletes ~60 upstream lines, so counting deletions
+  # would fail the one change designed to make merges cheaper.
   added=$(git diff --numstat "$UPSTREAM" -- "$SEAM" 2>/dev/null | awk 'NR==1{print $1}')
   added=${added:-0}
   [[ $added == "-" ]] && added=0   # binary; cannot happen here, but do not treat as huge
@@ -106,19 +80,9 @@ elif git rev-parse --verify --quiet "$UPSTREAM:$SEAM" >/dev/null 2>&1; then
       "$SPEC_DIR/SPEC-fork-seam.md in the same commit -- do not just raise this number."
   fi
 
-  # The FIRST added line of every hunk must carry the marker -- not merely some
-  # line in the hunk. Asking only "is there a marker in here somewhere" lets an
-  # unmarked line placed directly above a marked one join its hunk and sail
-  # through, which is how the first version of this check reported ok on a tree
-  # with unlabelled fork code in it.
-  #
-  # A marker covers the contiguous added block it introduces; what stops such a
-  # block growing without limit is the budget check, not this one.
-  #
-  # A hunk that only deletes has no added line at all, so it fails until a
-  # comment explaining the deletion is put in its place. That is deliberate: an
-  # exemption would create an unlabelled category of fork change, which is the
-  # exact thing this check exists to prevent.
+  # The FIRST added line of every hunk must carry the marker. "Somewhere in the
+  # hunk" lets an unmarked line above a marked one sail through. A pure-deletion
+  # hunk has no added line, so it fails until a comment explains the deletion.
   unmarked=$(git diff -U0 "$UPSTREAM" -- "$SEAM" 2>/dev/null | awk -v marker="$MARKER" '
     function flush() { if (start != "" && !ok) print start }
     /^\+\+\+/ { next }
@@ -146,9 +110,8 @@ elif git rev-parse --verify --quiet "$UPSTREAM:$SEAM" >/dev/null 2>&1; then
   fi
 fi
 
-# Markers point at the spec that justifies them. A marker naming a spec that no
-# longer exists is worse than no marker -- it reads as an explanation and then
-# leads nowhere.
+# A marker naming a spec that no longer exists is worse than no marker: it
+# reads as an explanation and leads nowhere.
 if [[ -f $SEAM ]]; then
   while read -r ref; do
     [[ -n $ref ]] || continue

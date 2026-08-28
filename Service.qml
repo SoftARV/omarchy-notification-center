@@ -40,11 +40,8 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // fork: toasts are centered, not right-aligned -- SPEC.md
-  // Toasts are fixed to the top-center of the screen (upstream puts them in the
-  // top-right corner). Centered, only the bar's top margin is applied: the
-  // right margin popupPlacement still computes has nothing to hold the column
-  // off, so a left/right/bottom bar no longer shifts popups sideways.
+  // fork: centered, not top-right. Only the top margin applies, so a
+  // left/right/bottom bar no longer shifts popups sideways -- SPEC.md
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
@@ -780,6 +777,9 @@ Item {
 
   // ---------------------------------------------------- settings persistence
 
+  // fork: settings, and later grouping and history state -- SPEC-settings.md
+  NotificationState { id: forkState; service: service }
+
   FileView {
     id: settingsFile
     path: service.settingsPath
@@ -814,8 +814,9 @@ Item {
     // in Component.onCompleted can both end up calling here.
     if (service.settingsLoaded) return
 
-    var parsed = NotificationLogic.parseSettings(raw)
-    if (parsed.error) console.warn("notifications: settings parse failed:", parsed.errorMessage || "")
+    // fork: v4 supersedes upstream's dnd-only parse, keeping its result shape
+    // so the hydration below is unchanged -- SPEC-settings.md
+    var parsed = forkState.hydrate(raw)
 
     if (parsed.dnd !== null) {
       service._hydrating = true
@@ -827,11 +828,13 @@ Item {
     // Versions before the history moved into its own directory kept every
     // notification in here. Rewrite once so that dead payload doesn't sit in
     // the file until the next DND toggle happens to clear it.
-    if (parsed.legacy) service.scheduleSettingsSave()
+    // fork: also rewrites a v3 or out-of-range file -- SPEC-settings.md
+    if (parsed.needsRewrite) service.scheduleSettingsSave()
   }
 
   function flushSettings() {
-    settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
+    // fork: writes the whole v4 document, not just dnd -- SPEC-settings.md
+    settingsFile.setText(forkState.serialize(persisted.doNotDisturb))
   }
 
   Component.onCompleted: {
@@ -985,9 +988,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: popupWindow.popupPlacement.margins.top
-        // fork: upstream's anchors.rightMargin is dropped here -- SPEC.md
-        // A centered column has no right edge for that margin to hold off, so
-        // applying it would shift every toast sideways by the bar's width.
+        // fork: no anchors.rightMargin -- a centered column has no right edge
+        // for it to hold off, so it would shift every toast sideways -- SPEC.md
         spacing: Style.space(8)
 
         Repeater {

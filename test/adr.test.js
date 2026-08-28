@@ -1,8 +1,5 @@
-// Tests for architecture decision records.
-//
-// An ADR earns its keep by being findable and by not drifting from the spec it
-// explains. Both are structural. Whether the reasoning is any good is not
-// something a test can say, and this file does not pretend otherwise.
+// An ADR earns its keep by being findable and not drifting from the spec it
+// explains. Whether the reasoning is good is not something a test can say.
 
 var test = require("node:test")
 var assert = require("node:assert")

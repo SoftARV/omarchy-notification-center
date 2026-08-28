@@ -1,12 +1,6 @@
-// Tests for scripts/check-delta.sh.
-//
-// Every case runs against a throwaway git repository in a temp dir, never
-// against this checkout. The negative cases work by breaking a file that must
-// not change, and a test that did that here would leave the tree dirty -- or
-// worse, revert it with a git checkout that ate an unrelated edit.
-//
-// A guard nobody has watched fail is not a guard, so each check gets both a
-// passing case and a failing one.
+// Every case runs against a throwaway repo in a temp dir: the negative cases
+// break files that must not change, and doing that here would dirty the tree.
+// A guard nobody has watched fail is not a guard.
 
 var test = require("node:test")
 var assert = require("node:assert")
@@ -152,10 +146,8 @@ test("fails outside a git repository", function() {
 
 
 // --------------------------------------------------------------- Service.qml
-//
-// Service.qml is upstream's file with a budgeted set of fork lines in it. The
-// guard's job there is not "did it change" -- it is meant to change -- but
-// "did it change more than agreed, and is every change labelled".
+// Service.qml is meant to change. The guard's job is "more than agreed, and is
+// every change labelled".
 
 // Replace a line in the fixture's Service.qml, returning the new contents.
 function editService(dir, lines) {
@@ -193,10 +185,9 @@ test("fails on an added Service.qml line with no fork marker", function() {
   assert.match(r.out, /unmarked|marker/i)
 })
 
-// A hunk that only deletes upstream lines has no added line to carry a marker.
-// Exempting it would create an unlabelled category of fork change, which is the
-// exact thing this check exists to prevent -- so it must fail until a comment
-// explaining the deletion is added in its place.
+// A pure-deletion hunk has no added line to mark. Exempting it would create an
+// unlabelled category of fork change, so it must fail until a comment explains
+// the deletion.
 test("fails on a pure-deletion hunk with no marker comment", function() {
   var dir = makeRepo()
   editService(dir, [
@@ -281,14 +272,8 @@ test("reports the added-line count on a passing run", function() {
   assert.match(r.out, /\b0\b/)
 })
 
-// Regression. The first cut of check 3 asked "does this hunk contain a marker
-// anywhere", and an unmarked line placed directly above a marked one was
-// absorbed into the same hunk and sailed through -- the guard reporting ok on
-// a tree with unlabelled fork code in it. Found by running the negative case
-// against the real Service.qml, which the fixture had not reproduced because
-// its unmarked line was nowhere near a marker.
-//
-// The rule is now: the FIRST added line of a hunk must carry the marker.
+// Regression. "Marker anywhere in the hunk" let an unmarked line above a marked
+// one sail through. The rule is now: the FIRST added line must carry it.
 test("fails on an unmarked line sitting directly above a marked one", function() {
   var dir = makeRepo()
   editService(dir, [
@@ -306,13 +291,9 @@ test("fails on an unmarked line sitting directly above a marked one", function()
   assert.match(r.out, /Service\.qml/)
 })
 
-// The limit of the check, stated as a test so nobody mistakes it for a
-// guarantee it does not make: a marker covers the contiguous block of added
-// lines it introduces. A line added *below* a marker is indistinguishable from
-// a legitimate two-line hook, and no amount of parsing separates them -- only
-// per-line markers would, and that would double the delta to police the delta.
-// What bounds a labelled block from growing without limit is the budget check,
-// not this one.
+// The limit, stated as a test so it is not mistaken for a guarantee: a marker
+// covers the block it introduces. A line below one is indistinguishable from a
+// legitimate two-line hook; the budget check is what bounds block growth.
 test("a marker covers the added block it introduces (documented limit)", function() {
   var dir = makeRepo()
   editService(dir, [
