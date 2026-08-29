@@ -11,7 +11,7 @@ capped at three lines).
 
 ## Phase 1: What to evict
 
-## Task 1: Eviction selection
+## Task 1: Eviction selection  [DONE]
 
 **Description:** Given the rows on screen, the cap and the critical urgency
 value, decide which rows leave. Pure, so the rule is settled before anything
@@ -23,29 +23,45 @@ list shape is what lets `stacking` later swap one row for a whole group without
 changing the mechanism.
 
 **Acceptance criteria:**
-- [ ] `rowsToEvict(rows, max, criticalUrgency)` returns `[]` when the count is at or under the cap
-- [ ] Over the cap it returns exactly `count - max` identities
-- [ ] It selects the oldest rows by timestamp, never the newest
-- [ ] Critical rows are never selected
-- [ ] When every row is critical it returns `[]`, even far over the cap — the cap is exceeded rather than an alert dropped
-- [ ] With a mix, it evicts only non-criticals and stops when they run out, even if still over the cap
-- [ ] Identities carry `originalId` and `timestamp`, not indices
-- [ ] Malformed rows, a non-array, a zero or negative cap, and a missing urgency value all yield `[]` rather than throwing
+- [x] `rowsToEvict(rows, max, criticalUrgency)` returns `[]` when the count is at or under the cap
+- [x] Over the cap it returns exactly `count - max` identities
+- [x] It selects the oldest rows by timestamp, never the newest
+- [x] Critical rows are never selected
+- [x] When every row is critical it returns `[]`, even far over the cap — the cap is exceeded rather than an alert dropped
+- [x] With a mix, it evicts only non-criticals and stops when they run out, even if still over the cap
+- [x] Identities carry `originalId` and `timestamp`, not indices
+- [x] Malformed rows, a non-array, a zero or negative cap, and a missing urgency value all yield `[]` rather than throwing
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → all pass, including `test/popup-cap.test.js`
-- [ ] A test with 20 rows and cap 3 asserts the 17 oldest are chosen and the 3 newest survive
-- [ ] A test with 5 criticals and cap 1 asserts `[]`
-- [ ] A test with 3 criticals + 3 normals and cap 2 asserts only normals are chosen
-- [ ] `./scripts/check-delta.sh` → passes; this task touches no upstream file
+- [x] `node --test "test/**/*.test.js"` → all pass, including `test/popup-cap.test.js`
+- [x] A test with 20 rows and cap 3 asserts the 17 oldest are chosen and the 3 newest survive
+- [x] A test with 5 criticals and cap 1 asserts `[]`
+- [x] A test with 3 criticals + 3 normals and cap 2 asserts only normals are chosen
+- [x] `./scripts/check-delta.sh` → passes; this task touches no upstream file
 
 **Dependencies:** None
 
-**Files likely touched:**
-- `NotificationPolicy.js`
-- `test/popup-cap.test.js` (new)
+**Files touched:**
+- `NotificationPolicy.js` (`rowsToEvict`)
+- `test/popup-cap.test.js` (new — 13 tests)
 
 **Estimated scope:** S (2 files)
+
+**"Exactly the overflow" has one deliberate exception.** With three criticals
+and three normals at cap 2, the overflow is four but only three rows are
+evictable — so three leave and the screen holds three, one over the cap. The
+criteria are worded as if the overflow is always available; it is not, and the
+critical exemption wins. A test pins that case specifically.
+
+**Two failure directions, one chosen on purpose.** A missing or unparseable
+critical-urgency value makes everything look evictable, which could drop an
+alert. It returns `[]` instead: the cap is exceeded rather than an emergency
+notification dropped. The same reasoning covers a nonsense cap.
+
+**Selection sorts rather than trusting the order it is handed.** `popupModel`
+is newest-first today, but nothing guarantees the caller passes it that way, and
+a wrong assumption would evict the newest toasts. Tested with newest-first,
+oldest-first and shuffled input.
 
 ---
 

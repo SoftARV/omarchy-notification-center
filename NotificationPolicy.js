@@ -280,3 +280,44 @@ function historyRowIndex(rows, originalId, timestamp) {
   }
   return -1
 }
+
+// ---------------------------------------------------------------- the cap
+
+// Which rows leave when the screen holds more than maxVisible. Returns
+// identities, never indices: indices shift as the model mutates, and the list
+// shape lets stacking later swap a row for a whole group.
+function rowsToEvict(rows, maxVisible, criticalUrgency) {
+  if (!Array.isArray(rows)) return []
+
+  var max = Number(maxVisible)
+  if (!isFinite(max) || max < 1) return []
+  // Without a usable critical value everything would look evictable, and a
+  // dropped alert is worse than an over-full screen.
+  if (typeof criticalUrgency !== "number" || !isFinite(criticalUrgency)) return []
+
+  var usable = []
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+    var ts = Number(row.timestamp)
+    var id = Number(row.originalId)
+    if (!isFinite(ts) || !isFinite(id)) continue
+    usable.push({ originalId: id, timestamp: ts, urgency: row.urgency })
+  }
+
+  var overflow = usable.length - max
+  if (overflow < 1) return []
+
+  // Oldest first, so the newest -- what the user is most likely reading --
+  // survives. Copied before sorting; the caller's array is not ours to reorder.
+  var candidates = usable.slice().sort(function(a, b) { return a.timestamp - b.timestamp })
+
+  var picked = []
+  for (var c = 0; c < candidates.length && picked.length < overflow; c++) {
+    // A cap is a comfort feature; honouring it by dropping an emergency alert
+    // is a bug no default makes right. The cap is exceeded instead.
+    if (candidates[c].urgency === criticalUrgency) continue
+    picked.push({ originalId: candidates[c].originalId, timestamp: candidates[c].timestamp })
+  }
+  return picked
+}
