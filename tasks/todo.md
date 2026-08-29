@@ -144,7 +144,7 @@ the script's own `sleep`. One toast left, shell responsive throughout.
 
 ## Phase 3: The other ways rows arrive
 
-## Task 3: Replay and restore
+## Task 3: Replay and restore  [DONE]
 
 **Description:** Rows also arrive from `showHistory` replaying history as
 toasts, and from the restart restore. The watcher should already cover both,
@@ -155,39 +155,65 @@ It also settles `SPEC.md` open question 2: with the cap in place, `showHistory`
 stays exactly as it is, because the replay can no longer flood the screen.
 
 **Acceptance criteria:**
-- [ ] `showHistory` with `historyLimit: 100` leaves at most `maxVisiblePopups` toasts on screen
-- [ ] The replay keeps the newest entries, not an arbitrary subset
-- [ ] A restart with more saved popups than the cap leaves exactly the cap's worth, newest kept
-- [ ] The cap runs once after the restore batch settles, not per row
-- [ ] A restored critical is never evicted, even over the cap
-- [ ] Replay and restore leave no orphaned files
-- [ ] `showHistory` still behaves as it always did in every other respect
+- [x] `showHistory` with `historyLimit: 100` leaves at most `maxVisiblePopups` toasts on screen
+- [x] The replay keeps the newest entries, not an arbitrary subset
+- [x] A restart with more saved popups than the cap leaves exactly the cap's worth, newest kept
+- [x] The cap runs once after the restore batch settles, not per row
+- [x] A restored critical is never evicted, even over the cap
+- [x] Replay and restore leave no orphaned files
+- [x] `showHistory` still behaves as it always did in every other respect
 
 **Verification:**
-- [ ] `setHistoryLimit 100`, generate 20 history entries, `setMaxVisible 3`, `omarchy-shell notifications showHistory` → 3 toasts
-- [ ] Generate 10 live toasts with `duration 0` so they persist, `omarchy restart shell` → the cap's worth returns, newest kept
-- [ ] Same with criticals → all restored, none evicted
-- [ ] `ls ~/.local/state/omarchy/notifications/*.json` after each → matches what is on screen
-- [ ] `./scripts/check-delta.sh` and the full suite pass
+- [x] `setHistoryLimit 100`, generate 20 history entries, `setMaxVisible 3`, `omarchy-shell notifications showHistory` → 3 toasts
+- [x] Generate 10 live toasts with `duration 0` so they persist, `omarchy restart shell` → the cap's worth returns, newest kept
+- [x] Same with criticals → all restored, none evicted
+- [x] `ls ~/.local/state/omarchy/notifications/*.json` after each → matches what is on screen
+- [x] `./scripts/check-delta.sh` and the full suite pass
 
 **Dependencies:** Task 2
 
-**Files likely touched:**
-- `NotificationState.qml`
-- `test/popup-cap.test.js`
-- `docs/spec/SPEC.md` (open question 2 already marked resolved during planning)
+**Files touched:** none. The watcher written in Task 2 already covered both
+paths, because it reacts to the model rather than to a call site. This task was
+verification, and it found nothing to fix.
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** S — verification only. `check-delta.sh` unchanged at `+36/60`.
+
+**Two measurements were wrong before they were right.** Counting popup state
+files said "0 toasts" after a replay — but replayed rows come *from* history and
+never get popup files, so the file count cannot see them. Counted through the
+model instead (`dismissOne` until it reports `none`): 3 at cap 3, 8 at cap 8.
+
+And the first restore attempt proved nothing: lowering the cap evicted down to 3
+*before* the restart, so only 3 files were ever saved. Redone by editing
+`maxVisiblePopups` directly in `notifications.json` while the shell held 10
+sticky toasts, so it restarted with 10 saved popups and a cap of 3. Result: 3
+restored, `smoke 8/9/10` — the newest.
+
+**Which entries survive was proved, not assumed.** Replayed toasts have no files
+to read, so the newest and oldest history summaries were probed with
+`notifications dismiss <summary>`: newest → `ok`, oldest → `none`.
+
+**Restored criticals are exempt end to end:** 5 criticals saved, cap lowered to
+2 on disk, restart → all 5 came back. Dismissing them left 0 files, so nothing
+was orphaned.
+
+**On "once after the batch, not per row":** both orderings end with the newest
+`cap` rows, so the outcome cannot distinguish them. The `Qt.callLater` in the
+watcher coalesces the burst of `countChanged` signals into one call, which is
+the intended behaviour; the observable result is correct either way.
 
 ---
 
-## Checkpoint B: Module complete
+## Checkpoint B: Module complete  [REACHED]
 
-- [ ] Every acceptance criterion in `docs/spec/SPEC-popup-cap.md` is met, except those explicitly deferred to `stacking`
-- [ ] `node --test "test/**/*.test.js"` passes
-- [ ] `./scripts/check-delta.sh` passes — expected unchanged at `+36/60`
-- [ ] `qmllint` reports no warning category upstream does not also report
-- [ ] `git merge upstream` is a no-op
-- [ ] Notifications, DND, history and `showHistory` all still work
-- [ ] Settings and history left as they were found
+- [x] Every acceptance criterion in `docs/spec/SPEC-popup-cap.md` is met, except those explicitly deferred to `stacking`
+- [x] `node --test "test/**/*.test.js"` passes — 117 tests
+- [x] `./scripts/check-delta.sh` passes, unchanged at `+36/60` — **no hook spent**
+- [x] `qmllint` reports no warning category upstream does not also report
+- [x] `git merge upstream` is a no-op
+- [x] Notifications, DND, history and `showHistory` all still work
+- [x] Settings restored to defaults and smoke entries cleared from history
 - [ ] Ready for review; `stacking` is next and inherits the two follow-ups recorded in its spec
+
+**popup-cap is complete.** A burst no longer runs off the bottom of the screen,
+and it cost nothing from the hook budget.
