@@ -11,7 +11,7 @@ capped at three lines).
 
 ## Phase 1: The view, and a safe delegate
 
-## Task 1: groupPopups
+## Task 1: groupPopups  [DONE]
 
 **Description:** Turn the flat, newest-first row list into a list of groups.
 Pure, so the grouping rule is settled before any QML depends on it.
@@ -20,30 +20,50 @@ Groups are ordered by their newest member — a deck rises when it receives a
 notification. Rows keep their newest-first order within a group.
 
 **Acceptance criteria:**
-- [ ] `groupPopups(rows, groupByApp)` returns `[{ key, app, rows, newest }]`
-- [ ] Rows from the same app share one group; the key is the app trimmed and lowercased
-- [ ] `"Slack"`, `"slack"` and `" Slack "` group together
-- [ ] Rows with an empty or missing `app` each get their own group — an empty key would herd unrelated senders together
-- [ ] Groups are ordered by their newest member, newest group first
-- [ ] Rows inside a group stay newest-first
-- [ ] `newest` is the group's newest row timestamp
-- [ ] `groupByApp: false` returns one group per row, in the order given
-- [ ] Malformed rows, a non-array and a missing flag yield `[]` or sane groups, never a throw
+- [x] `groupPopups(rows, groupByApp)` returns `[{ key, app, rows, newest }]`
+- [x] Rows from the same app share one group; the key is the app trimmed and lowercased
+- [x] `"Slack"`, `"slack"` and `" Slack "` group together
+- [x] Rows with an empty or missing `app` each get their own group — an empty key would herd unrelated senders together
+- [x] Groups are ordered by their newest member, newest group first
+- [x] Rows inside a group stay newest-first
+- [x] `newest` is the group's newest row timestamp
+- [x] `groupByApp: false` returns one group per row, in the order given
+- [x] Malformed rows, a non-array and a missing flag yield `[]` or sane groups, never a throw
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → all pass, including `test/stacking.test.js`
-- [ ] A test asserts a deck rises to the top when it gains a newer row
-- [ ] A test asserts two empty-`app` rows do **not** share a group
-- [ ] A test asserts `groupByApp: false` reproduces the input order exactly
-- [ ] `./scripts/check-delta.sh` → passes; this task touches no upstream file
+- [x] `node --test "test/**/*.test.js"` → all pass, including `test/stacking.test.js`
+- [x] A test asserts a deck rises to the top when it gains a newer row
+- [x] A test asserts two empty-`app` rows do **not** share a group
+- [x] A test asserts `groupByApp: false` reproduces the input order exactly
+- [x] `./scripts/check-delta.sh` → passes; this task touches no upstream file
 
 **Dependencies:** None
 
-**Files likely touched:**
-- `NotificationPolicy.js`
-- `test/stacking.test.js` (new)
+**Files touched:**
+- `NotificationPolicy.js` (`groupPopups`)
+- `test/stacking.test.js` (new — 16 tests)
 
 **Estimated scope:** S (2 files)
+
+**Anonymous rows are never registered for lookup.** A first attempt namespaced
+keys as `app:slack` to keep them from colliding with the `row:<id>-<ts>-<i>`
+form used for ungrouped and anonymous rows — but the spec says the key *is* the
+app trimmed and lowercased, and four tests said so too. Instead, only shared app
+groups go in the lookup table; anonymous ones are pushed straight onto the list.
+Collision becomes impossible without namespacing the key, and the spec holds.
+
+**Ordering is computed, not trusted.** `popupModel` is newest-first, but nothing
+guarantees a caller passes it that way, and the wrong assumption would put a
+stale deck at the top. Both the group order and the rows within each group are
+sorted; a test feeds the same rows in two different orders and asserts identical
+output.
+
+**Group rows are the caller's own row objects**, not copies — the deck renders
+them directly. Pinned by a test using `strictEqual` on identity.
+
+**The Task 4 problem, made concrete:** 12 rows across 3 apps is 3 decks, but
+`rowsToEvict` on the raw rows at cap 3 selects **9 rows** — it would shred all
+three decks. That is exactly what `slotCount` and group-aware eviction fix.
 
 ---
 

@@ -321,3 +321,53 @@ function rowsToEvict(rows, maxVisible, criticalUrgency) {
   }
   return picked
 }
+
+// ------------------------------------------------------------- grouping
+
+// The flat row list as decks: [{ key, app, rows, newest }]. Groups are ordered
+// by their newest member, so a deck rises when it receives a notification --
+// matching the flat stack's newest-first order.
+function groupPopups(rows, groupByApp) {
+  if (!Array.isArray(rows)) return []
+  var grouped = groupByApp === undefined || groupByApp === null ? true : !!groupByApp
+
+  var groups = []
+  var byKey = {}
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+
+    var app = String(row.app === null || row.app === undefined ? "" : row.app).trim()
+    var ts = Number(row.timestamp)
+    if (!isFinite(ts)) ts = 0
+
+    var shared = grouped && app.length > 0
+    var key = shared ? app.toLowerCase()
+                     : "row:" + String(row.originalId) + "-" + String(row.timestamp) + "-" + i
+
+    // Anonymous and ungrouped rows are never registered for lookup, so they
+    // cannot collide with an app whose name happens to look like a row key.
+    var group = shared ? byKey[key] : null
+    if (!group) {
+      group = { key: key, app: app, rows: [], newest: ts }
+      if (shared) byKey[key] = group
+      groups.push(group)
+    }
+    group.rows.push(row)
+    if (ts > group.newest) {
+      group.newest = ts
+      // The newest row names the deck, so a rename by replaces_id shows.
+      group.app = app
+    }
+  }
+
+  // Sorted rather than trusted: popupModel is newest-first, but nothing
+  // guarantees a caller passes it that way, and the wrong assumption would put
+  // a stale deck at the top.
+  for (var g = 0; g < groups.length; g++) {
+    groups[g].rows.sort(function(a, b) { return Number(b.timestamp) - Number(a.timestamp) })
+  }
+  groups.sort(function(a, b) { return b.newest - a.newest })
+  return groups
+}
