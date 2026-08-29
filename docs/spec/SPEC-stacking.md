@@ -52,10 +52,19 @@ grouped model is where the subtle bugs live.
 `components/NotificationDeck.qml` renders one group.
 
 **Collapsed** (default, group of *n* > 1): the newest row drawn as a full
-`NotificationCard`; up to two ghost edges peeking below it, each offset ~4px
-down, scaled ~0.98, progressively dimmed, drawn *behind*; a count badge showing
-*n* in the card's corner. A group of 1 renders as a plain card with no badge
-and no ghosts — indistinguishable from today.
+`NotificationCard`, unchanged, with up to two ghost edges peeking below it —
+each offset ~4px down, scaled ~0.98, progressively dimmed, drawn *behind*. It
+should read at a glance as a stack of cards, one on top of another.
+
+**No count badge.** The stack itself is the signal that there is more than one;
+a number on the card is information the user did not ask for. A group of 1
+renders as a plain card with no ghosts — pixel-identical to today.
+
+**The card is not modified.** `components/NotificationCard.qml` stays
+byte-identical to upstream, as it has all along. Everything the deck adds —
+the ghost edges, the offsets, the expansion — lives in
+`components/NotificationDeck.qml` and is composed *around* the card, never
+inside it.
 
 **Expanded** (any pointer inside the deck): the group's rows fan into a normal
 vertical column with standard spacing, each a full card with its own close
@@ -63,7 +72,9 @@ button and click target. The transition is a height/opacity animation on the
 column, ~160ms, matching the shell's existing animation durations.
 
 **At most 5 cards are drawn when expanded**, newest first, with a `+N more`
-line when the deck holds more. The cap counts *decks*, not rows, so a single
+line when the deck holds more. That line is a disclosure of what is not drawn,
+not a badge on the card — it exists only while expanded and only when the deck
+exceeds five. The cap counts *decks*, not rows, so a single
 deck can hold many notifications — and expanding twelve would run straight off
 the bottom of the screen, the exact clutter this initiative exists to remove.
 
@@ -129,7 +140,10 @@ cap shreds it:
   against `maxVisiblePopups`.
 - Eviction removes a whole group at once, choosing the one whose newest row is
   oldest.
-- Five notifications from one app produce one deck showing a count of 5.
+- Five notifications from one app produce one deck that reads as a stack of
+  cards — the front card unchanged, with ghost edges behind it.
+- No count is drawn on a collapsed deck.
+- `components/NotificationCard.qml` is still byte-identical to upstream.
 - Notifications from three apps produce three decks, in first-appearance order.
 - One notification produces a card visually identical to today's.
 - Hovering a collapsed deck expands it; every card in it is independently

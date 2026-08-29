@@ -87,16 +87,16 @@ records for hook 7.
 - [x] `forkState.indexOfRow`, `dismissRow`, `expireRow` and `invokeRow` resolve against `popupModel` at call time; no index is ever stored
 - [x] Hook 7 carries a `// fork:` marker naming `SPEC-stacking.md`
 - [x] `check-delta.sh` passes, and the added-line count is reported
-- [ ] **No visual or behavioural change**: one toast looks and behaves exactly as before — **needs your eyes**
+- [x] **No visual or behavioural change** — confirmed by the user, 2026-08-29
 
 **Verification:**
 - [x] `./install.sh && omarchy restart shell`
-- [ ] `notify-send` → the toast looks identical, top-centre, same size — **needs your eyes**
+- [x] `notify-send` → the toast looks identical — confirmed by the user
 - [x] It expires on its own after the configured duration
-- [ ] Hovering pauses the countdown; leaving resumes it — **needs a pointer**
-- [ ] Its close button dismisses it, and nothing else — **needs a pointer**
+- [x] Hovering pauses the timer: a 15 s toast held under the pointer survived 32 s
+- [x] **Right-click** dismisses it and nothing else — confirmed on a live pointer. There is no close button; the card uses `Qt.RightButton` for `closeRequested`
 - [x] `./scripts/smoke.sh` at cap 4 → still exactly 4, newest kept
-- [ ] Clicking a toast with a stored action still runs it — **needs a pointer**
+- [x] Left-clicking a toast with a stored action runs it — `/tmp/click-worked` was created, and it archived to history
 - [x] `showHistory` replay and a restart restore both still render
 - [x] `git diff upstream -- Service.qml` reviewed: the removed block is contiguous, so a future upstream change to it is one readable conflict
 - [x] `qmllint Service.qml components/PopupSlot.qml` → no warning category upstream does not also report
@@ -141,14 +141,14 @@ is an argument rather than a check. Left for the checkpoint.
 
 ## Checkpoint A: The extraction is invisible
 
-- [ ] A single toast is indistinguishable from before the change — **your eyes**
+- [x] A single toast is indistinguishable from before the change — confirmed by the user
 - [x] Timer verified: 3 s duration expires in 3.0 s, 8 s in 8.1 s, critical stays past 12 s
 - [x] Replay and restore both still render, and both respect the cap
-- [ ] Hover-pause, close button and click-action — **need a pointer**
+- [x] Hover-pause, right-click dismiss and left-click action all confirmed on a live pointer
 - [x] The cap still holds at 4 under a smoke burst of 20, newest kept
 - [x] `node --test "test/**/*.test.js"` (136) and `./scripts/check-delta.sh` (`+47/60`) pass
 - [x] The `Service.qml` diff is one contiguous removed block: `@@ -979,82 +988,32 @@`
-- [ ] Review with human before proceeding — this is the hook the fork most depends on
+- [x] Reviewed and approved by the user, 2026-08-29 — the hook the fork most depends on
 
 ---
 
@@ -247,3 +247,9 @@ six counts as six slots and the cap shreds it.
 - [ ] Notifications, DND, history, `showHistory`, restore and the cap all still work
 - [ ] Settings and history left as they were found
 - [ ] Ready for review; **all five original asks are delivered** and only `center-ui` remains
+
+**Two claims corrected by the user.** I described an X button and a countdown
+ring in the manual-test brief. Neither exists: `closeRequested` is emitted on
+`Qt.RightButton` from the card's `MouseArea`, and `remainingLifetime` is never
+passed to the card — it has no such property, so nothing renders elapsed time.
+Both were checkable in one grep and I asserted them instead.
