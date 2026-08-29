@@ -87,7 +87,7 @@ Item {
 
   // Identity, resolved at call time: every removal shifts the indices after it,
   // so an index collected up front would point at the wrong notification.
-  function popupIndexOf(originalId, timestamp) {
+  function indexOfRow(originalId, timestamp) {
     var model = root.service ? root.service.popupModel : null
     if (!model) return -1
     for (var i = 0; i < model.count; i++) {
@@ -109,6 +109,23 @@ Item {
     return out
   }
 
+  // What a slot calls instead of holding an index. Each resolves identity at
+  // call time, so a row removed in between is a no-op rather than a wrong hit.
+  function dismissRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.dismissPopup(index)
+  }
+
+  function expireRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.expirePopup(index)
+  }
+
+  function invokeRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.invokePopupDefault(index)
+  }
+
   // expire, not dismiss: the user dismissed nothing, and expire() is what the
   // sender should hear. It also reuses upstream's archive-and-clean path.
   function enforceCap() {
@@ -117,7 +134,7 @@ Item {
       root.popupRows(), root.settings.maxVisiblePopups, NotificationUrgency.Critical)
 
     for (var i = 0; i < victims.length; i++) {
-      var index = root.popupIndexOf(victims[i].originalId, victims[i].timestamp)
+      var index = root.indexOfRow(victims[i].originalId, victims[i].timestamp)
       if (index >= 0) root.service.expirePopup(index)
     }
   }

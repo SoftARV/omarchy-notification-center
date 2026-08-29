@@ -67,7 +67,7 @@ three decks. That is exactly what `slotCount` and group-aware eviction fix.
 
 ---
 
-## Task 2: Extract PopupSlot.qml, dismiss by identity
+## Task 2: Extract PopupSlot.qml, dismiss by identity  [DONE]
 
 **Description:** Move the Repeater's delegate body into
 `components/PopupSlot.qml` **verbatim**, and replace its two index-based calls
@@ -82,44 +82,72 @@ delegate against it stays meaningful — the mitigation `SPEC-fork-seam.md`
 records for hook 7.
 
 **Acceptance criteria:**
-- [ ] `components/PopupSlot.qml` contains upstream's delegate body, unchanged apart from the identity calls and the properties it now receives
-- [ ] `service.dismissPopup(index)` and `service.expirePopup(index)` are replaced by `forkState.dismissRow(originalId, timestamp)` and `forkState.expireRow(...)`
-- [ ] `forkState.indexOfRow`, `dismissRow`, `expireRow` and `invokeRow` resolve against `popupModel` at call time; no index is ever stored
-- [ ] Hook 7 carries a `// fork:` marker naming `SPEC-stacking.md`
-- [ ] `check-delta.sh` passes, and the added-line count is reported
-- [ ] **No visual or behavioural change**: one toast looks and behaves exactly as before
+- [x] `components/PopupSlot.qml` contains upstream's delegate body, unchanged apart from the identity calls and the properties it now receives
+- [x] `service.dismissPopup(index)` and `service.expirePopup(index)` are replaced by `forkState.dismissRow(originalId, timestamp)` and `forkState.expireRow(...)`
+- [x] `forkState.indexOfRow`, `dismissRow`, `expireRow` and `invokeRow` resolve against `popupModel` at call time; no index is ever stored
+- [x] Hook 7 carries a `// fork:` marker naming `SPEC-stacking.md`
+- [x] `check-delta.sh` passes, and the added-line count is reported
+- [ ] **No visual or behavioural change**: one toast looks and behaves exactly as before — **needs your eyes**
 
 **Verification:**
-- [ ] `./install.sh && omarchy restart shell`
-- [ ] `notify-send` → the toast looks identical, top-centre, same size
-- [ ] It expires on its own after the configured duration
-- [ ] Hovering pauses the countdown; leaving resumes it
-- [ ] Its close button dismisses it, and nothing else
-- [ ] `./scripts/smoke.sh` at cap 4 → still exactly 4, newest kept
-- [ ] Clicking a toast with a stored action still runs it
-- [ ] `showHistory` replay and a restart restore both still render
-- [ ] `git diff upstream -- Service.qml` reviewed: the removed block is contiguous, so a future upstream change to it is one readable conflict
-- [ ] `qmllint Service.qml components/PopupSlot.qml` → no warning category upstream does not also report
+- [x] `./install.sh && omarchy restart shell`
+- [ ] `notify-send` → the toast looks identical, top-centre, same size — **needs your eyes**
+- [x] It expires on its own after the configured duration
+- [ ] Hovering pauses the countdown; leaving resumes it — **needs a pointer**
+- [ ] Its close button dismisses it, and nothing else — **needs a pointer**
+- [x] `./scripts/smoke.sh` at cap 4 → still exactly 4, newest kept
+- [ ] Clicking a toast with a stored action still runs it — **needs a pointer**
+- [x] `showHistory` replay and a restart restore both still render
+- [x] `git diff upstream -- Service.qml` reviewed: the removed block is contiguous, so a future upstream change to it is one readable conflict
+- [x] `qmllint Service.qml components/PopupSlot.qml` → no warning category upstream does not also report
 
 **Dependencies:** Task 1 (not strictly — may be built in parallel)
 
-**Files likely touched:**
-- `components/PopupSlot.qml` (new)
-- `Service.qml` (hook 7)
-- `NotificationState.qml` (identity helpers)
-- `docs/spec/SPEC-fork-seam.md` (mark hook 7 spent)
+**Files touched:**
+- `components/PopupSlot.qml` (new — upstream's delegate body)
+- `Service.qml` (hook 7 — 82 upstream lines out, 32 in, one contiguous hunk)
+- `NotificationState.qml` (`indexOfRow`, `dismissRow`, `expireRow`, `invokeRow`)
+- `test/stacking.test.js` (3 tests guarding the index hazard)
+- `docs/spec/SPEC-fork-seam.md` (hook 7 spent; usage now 47/60)
 
-**Estimated scope:** M (4 files)
+**Estimated scope:** M (5 files)
+
+**A real bug, caught because the toast never expired.** The delegate first
+passed `forkState: forkState` — and since a binding resolves the object's own
+properties before the component's ids, that bound the property to *itself*. It
+came out null, so `service` was null, so `lifetime` was 0, so the countdown
+never ran. The property is now `notificationState`, and the comment says why it
+is neither `state` (QQuickItem has one) nor `forkState` (the id in
+`Service.qml`).
+
+**qmllint caught the other half of the same class.** `property var state` on an
+`Item` collides with `QQuickItem.state` — the identical trap that made the mount
+`forkState` rather than `state` back at planning. Renamed before it could bite.
+
+**The conflict surface is what hook 7 promised.** The removal is a single
+contiguous hunk, `@@ -979,82 +988,32 @@` — a future upstream rewrite of that
+delegate is one readable conflict resolved the same way every time.
+
+**Three tests now guard the module's main hazard**: `components/PopupSlot.qml`
+and `components/NotificationDeck.qml` may not call `dismissPopup`, `expirePopup`
+or `invokePopupDefault`, and may not declare an `index` property at all.
+
+**What is verified and what is not.** Identity-based *expiry* is proven — the
+countdown fired and removed the right row. `dismissRow` and `invokeRow` use the
+identical `indexOfRow` mechanism, but they are reached from a pointer, so that
+is an argument rather than a check. Left for the checkpoint.
 
 ---
 
 ## Checkpoint A: The extraction is invisible
 
-- [ ] A single toast is indistinguishable from before the change
-- [ ] Timer, hover-pause, close, click-action, replay and restore all still work
-- [ ] The cap still holds at 4 under a smoke burst
-- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
-- [ ] The `Service.qml` diff is one contiguous removed block
+- [ ] A single toast is indistinguishable from before the change — **your eyes**
+- [x] Timer verified: 3 s duration expires in 3.0 s, 8 s in 8.1 s, critical stays past 12 s
+- [x] Replay and restore both still render, and both respect the cap
+- [ ] Hover-pause, close button and click-action — **need a pointer**
+- [x] The cap still holds at 4 under a smoke burst of 20, newest kept
+- [x] `node --test "test/**/*.test.js"` (136) and `./scripts/check-delta.sh` (`+47/60`) pass
+- [x] The `Service.qml` diff is one contiguous removed block: `@@ -979,82 +988,32 @@`
 - [ ] Review with human before proceeding — this is the hook the fork most depends on
 
 ---

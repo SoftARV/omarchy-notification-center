@@ -48,11 +48,11 @@ table's marker strings out of `Service.qml`.
 | 4 | `historyLimit` property binding | Delegation | `history-store` | 1 | — |
 | 5 | `loadSettings()` / `flushSettings()` bodies | Delegation | `settings` | 6 | spent |
 | 6 | `handleNotification()` — one call before the model insert | Delegation | `popup-cap` | 2 | — |
-| 7 | Popup `Repeater` `model` and `delegate` | Mount | `stacking` | 6 | — |
+| 7 | Popup `Repeater` `model` and `delegate` | Mount | `stacking` | 6 | spent (delegate) |
 | 8 | `archivePopupFileFor()` **and** `writeHistoryFile()` — one revision-bump call each | Delegation | `history-store` | 4 | — |
 | 9 | `clearHistory()` — one revision-bump call | Delegation | `history-store` | 1 | — |
 
-Usage after `timing`: **23 of 60 added lines.** Hook 1 turned out to be
+Usage after `stacking`'s delegate extraction: **47 of 60 added lines.** Hook 7 replaced 82 upstream lines with 32 in a single contiguous hunk, which is the mechanical-conflict property it was designed for. Hook 6 was never needed: `popup-cap` reached `popupModel` through its existing alias instead. Hook 1 turned out to be
 unnecessary — the sidecar imports `NotificationPolicy.js` itself, so
 `Service.qml` needs no import of its own. Hook 5 also came in under budget by
 leaving upstream's DND hydration block untouched: `NotificationState.hydrate()`

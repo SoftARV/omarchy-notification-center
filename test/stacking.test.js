@@ -129,3 +129,50 @@ test("group rows are the caller's row objects, not copies", function() {
   var g = policy.groupPopups([r], true)
   assert.strictEqual(g[0].rows[0], r)
 })
+
+// ------------------------------------------------------ the index hazard
+
+var fs = require("node:fs")
+var path = require("node:path")
+var ROOT = path.join(__dirname, "..")
+
+// Inside a deck the delegate's index is not the popupModel index, and an index
+// captured earlier goes stale the moment any row is removed. SPEC.md lists
+// index-based dismissal under Never; these files are where it would creep in.
+var DECK_FILES = ["components/PopupSlot.qml", "components/NotificationDeck.qml"]
+
+function existing(files) {
+  return files.filter(function(f) { return fs.existsSync(path.join(ROOT, f)) })
+}
+
+test("the slot component exists", function() {
+  assert.ok(fs.existsSync(path.join(ROOT, "components/PopupSlot.qml")),
+    "components/PopupSlot.qml should hold the delegate body")
+})
+
+test("no deck component dismisses, expires or invokes by index", function() {
+  var offenders = []
+  existing(DECK_FILES).forEach(function(file) {
+    var text = fs.readFileSync(path.join(ROOT, file), "utf8")
+    text.split("\n").forEach(function(line, i) {
+      if (/\b(dismissPopup|expirePopup|invokePopupDefault)\s*\(/.test(line)) {
+        offenders.push(file + ":" + (i + 1) + "  " + line.trim())
+      }
+    })
+  })
+  assert.deepStrictEqual(offenders, [],
+    "these take a popupModel index; use the identity helpers instead")
+})
+
+test("no deck component holds an index property at all", function() {
+  var offenders = []
+  existing(DECK_FILES).forEach(function(file) {
+    var text = fs.readFileSync(path.join(ROOT, file), "utf8")
+    text.split("\n").forEach(function(line, i) {
+      if (/^\s*(required\s+)?property\s+int\s+index\b/.test(line)) {
+        offenders.push(file + ":" + (i + 1))
+      }
+    })
+  })
+  assert.deepStrictEqual(offenders, [], "a stored index is stale as soon as a row is removed")
+})
