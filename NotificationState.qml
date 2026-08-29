@@ -70,10 +70,8 @@ Item {
     root.newestHistoryTimestamp = rows.length > 0 ? Number(rows[0].timestamp || 0) : 0
   }
 
-  // How many slots the screen holds. One row is one slot until stacking lands
-  // and redefines this as groups.length -- see SPEC-popup-cap.md.
-  readonly property int slotCount:
-    root.service && root.service.popupModel ? root.service.popupModel.count : 0
+  // How many slots the screen holds. A deck is one slot however deep it is.
+  readonly property int slotCount: root.groups.length
 
   // Enforce the cap when the stack grows or the cap shrinks. Deferred through
   // Qt.callLater: reacting synchronously would re-enter a model mid-mutation,
@@ -87,9 +85,11 @@ Item {
 
   onSettingsChanged: Qt.callLater(root.refreshPopupView)
 
+  // Groups first: the cap counts them, so a stale view would cap the wrong
+  // number of slots.
   function refreshPopupView() {
-    root.enforceCap()
     root.recomputeGroups()
+    root.enforceCap()
   }
 
   // Identity, resolved at call time: every removal shifts the indices after it,
@@ -149,8 +149,8 @@ Item {
   // sender should hear. It also reuses upstream's archive-and-clean path.
   function enforceCap() {
     if (!root.service) return
-    var victims = Policy.rowsToEvict(
-      root.popupRows(), root.settings.maxVisiblePopups, NotificationUrgency.Critical)
+    var victims = Policy.groupsToEvict(
+      root.groups, root.settings.maxVisiblePopups, NotificationUrgency.Critical)
 
     for (var i = 0; i < victims.length; i++) {
       var index = root.indexOfRow(victims[i].originalId, victims[i].timestamp)

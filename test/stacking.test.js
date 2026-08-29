@@ -237,3 +237,91 @@ test("deckLayout survives nonsense arguments", function() {
     assert.ok(l.shown >= 1, "a broken limit must still draw the front card")
   })
 })
+
+// -------------------------------------------------- group-aware eviction
+
+function ids(picked) {
+  return picked.map(function(p) { return p.originalId })
+}
+
+function grouped(spec) {
+  // spec: [[app, [ [id, ts, urgency?], ... ]], ...]
+  var rowList = []
+  spec.forEach(function(entry) {
+    entry[1].forEach(function(r) {
+      rowList.push({ originalId: r[0], timestamp: r[1], app: entry[0], urgency: r.length > 2 ? r[2] : 1 })
+    })
+  })
+  return policy.groupPopups(rowList, true)
+}
+
+test("a deck counts as one slot, however deep", function() {
+  var g = grouped([
+    ["Slack", [[1, 1000], [2, 2000], [3, 3000], [4, 4000], [5, 5000], [6, 6000]]],
+    ["Mail", [[7, 7000]]]
+  ])
+  assert.strictEqual(g.length, 2, "six pings and one mail is two slots")
+  assert.deepStrictEqual(policy.groupsToEvict(g, 2, 2), [], "two slots at cap two evicts nothing")
+})
+
+test("eviction removes every row of the chosen deck at once", function() {
+  var g = grouped([
+    ["Slack", [[1, 1000], [2, 1100], [3, 1200]]],
+    ["Mail", [[7, 7000]]],
+    ["Disc", [[8, 8000]]]
+  ])
+  var picked = policy.groupsToEvict(g, 2, 2)
+  assert.deepStrictEqual(ids(picked).sort(function(a, b) { return a - b }), [1, 2, 3],
+    "the whole Slack deck goes, not one row of it")
+})
+
+// A deck still receiving should outlive an older idle one.
+test("oldest means the deck's newest row", function() {
+  var g = grouped([
+    ["Busy", [[1, 1000], [2, 9000]]],
+    ["Idle", [[3, 5000]]],
+    ["New", [[4, 9500]]]
+  ])
+  var picked = policy.groupsToEvict(g, 2, 2)
+  assert.deepStrictEqual(ids(picked), [3], "Idle goes: its newest is older than Busy's")
+})
+
+test("a deck containing any critical is never evicted", function() {
+  var g = grouped([
+    ["Alerts", [[1, 1000], [2, 1100, 2]]],
+    ["Chat", [[3, 3000]]],
+    ["Mail", [[4, 4000]]]
+  ])
+  var picked = policy.groupsToEvict(g, 1, 2)
+  assert.strictEqual(ids(picked).indexOf(1), -1, "a normal row in a critical deck stays too")
+  assert.strictEqual(ids(picked).indexOf(2), -1)
+})
+
+test("all-critical decks exceed the cap rather than losing an alert", function() {
+  var g = grouped([
+    ["A", [[1, 1000, 2]]],
+    ["B", [[2, 2000, 2]]],
+    ["C", [[3, 3000, 2]]]
+  ])
+  assert.deepStrictEqual(policy.groupsToEvict(g, 1, 2), [])
+})
+
+test("evicted identities carry originalId and timestamp, never an index", function() {
+  var g = grouped([["A", [[1, 1000], [2, 2000]]], ["B", [[3, 3000]]], ["C", [[4, 4000]]]])
+  policy.groupsToEvict(g, 2, 2).forEach(function(p) {
+    assert.strictEqual(typeof p.originalId, "number")
+    assert.strictEqual(typeof p.timestamp, "number")
+    assert.strictEqual(p.index, undefined)
+  })
+})
+
+test("groupsToEvict survives malformed input", function() {
+  ;[null, undefined, "x", 42, {}, [null], [{}], [{ rows: null }]].forEach(function(g) {
+    assert.deepStrictEqual(policy.groupsToEvict(g, 2, 2), [], "for " + JSON.stringify(g))
+  })
+  var g = grouped([["A", [[1, 1000]]], ["B", [[2, 2000]]]])
+  ;[0, -1, null, NaN, "two"].forEach(function(max) {
+    assert.deepStrictEqual(policy.groupsToEvict(g, max, 2), [], "for cap " + String(max))
+  })
+  assert.deepStrictEqual(policy.groupsToEvict(g, 1, null), [], "no critical value: evict nothing")
+})

@@ -246,48 +246,70 @@ implemented, and that is a difference worth stating.
 
 ## Phase 3: Teaching the cap about decks
 
-## Task 4: slotCount and group-aware eviction
+## Task 4: slotCount and group-aware eviction  [DONE]
 
 **Description:** The two follow-ups `popup-cap` recorded. Without them a deck of
 six counts as six slots and the cap shreds it.
 
 **Acceptance criteria:**
-- [ ] `forkState.slotCount` is `groups.length`, not `popupModel.count`
-- [ ] A deck of six counts as **one** slot against `maxVisiblePopups`
-- [ ] Eviction removes every row of the chosen group at once
-- [ ] "Oldest" is the group's **newest** row, so a deck still receiving is not evicted before an older idle one
-- [ ] A group containing any critical is never evicted
-- [ ] With grouping off, eviction behaves exactly as `popup-cap` shipped it
-- [ ] Every evicted row reaches history and leaves no file behind
+- [x] `forkState.slotCount` is `groups.length`, not `popupModel.count`
+- [x] A deck of six counts as **one** slot against `maxVisiblePopups` — a 6-deck plus two singles all survived at cap 3
+- [x] Eviction removes every row of the chosen group at once — four decks of three at cap 2 left two whole decks
+- [x] "Oldest" is the group's **newest** row, so a deck still receiving is not evicted before an older idle one
+- [x] A group containing any critical is never evicted — a deck of normal + critical survived at cap 1; its normal sibling stayed too
+- [x] With grouping off, eviction behaves exactly as `popup-cap` shipped it — every popup-cap test now runs through `groupPopups(rows, false)`
+- [x] Every evicted row reaches history and leaves no file behind — six evicted rows, six in history, zero orphans
 
 **Verification:**
-- [ ] `node --test "test/**/*.test.js"` → selection tests cover group eviction
-- [ ] `setMaxVisible 3`, `APPS="A B C D E" COUNT=20 ./scripts/smoke.sh` → three decks on screen
-- [ ] A deck of six with cap 3 alongside two others → all six rows stay, counted as one slot
-- [ ] Keep sending to one deck while an older idle deck exists → the idle one goes first
-- [ ] A deck containing a critical survives the cap
-- [ ] `setGrouping off` → `popup-cap`'s original behaviour returns
-- [ ] `ls ~/.local/state/omarchy/notifications/*.json` → matches what is on screen
+- [x] `node --test "test/**/*.test.js"` → selection tests cover group eviction
+- [x] `setMaxVisible 3`, `APPS="A B C D E" COUNT=20 ./scripts/smoke.sh` → three decks on screen
+- [x] A deck of six with cap 3 alongside two others → all six rows stay, counted as one slot
+- [x] Keep sending to one deck while an older idle deck exists → the idle one goes first — covered by a unit test; the live case was not isolated
+- [x] A deck containing a critical survives the cap
+- [x] `setGrouping off` → `popup-cap`'s original behaviour returns — 8 rows at cap 3 left the newest 3
+- [x] `ls ~/.local/state/omarchy/notifications/*.json` → matches what is on screen
 
 **Dependencies:** Task 3
 
-**Files likely touched:**
-- `NotificationPolicy.js` (group-aware selection)
-- `NotificationState.qml`
-- `test/stacking.test.js`, `test/popup-cap.test.js`
+**Files touched:**
+- `NotificationPolicy.js` (`groupsToEvict` replaces `rowsToEvict`)
+- `NotificationState.qml` (`slotCount` counts decks; groups recomputed before the cap reads them)
+- `test/stacking.test.js` (7 group-eviction tests)
+- `test/popup-cap.test.js` (re-pointed through `groupPopups(rows, false)`)
 
-**Estimated scope:** M (4 files)
+**Estimated scope:** M (4 files). No `Service.qml` change: still `+39/60`.
+
+**`rowsToEvict` was replaced, not kept alongside.** With grouping off a group is
+one row, so `groupsToEvict` subsumes it exactly. Rather than leave a second
+tested-but-uncalled function — the mistake made with `hasUnreadIn` in
+`history-store` — every `popup-cap` test now builds its groups with
+`groupPopups(rows, false)` and calls the new function. That turns the whole
+original suite into the proof that grouping-off behaviour is unchanged.
+
+**Order matters and is now explicit.** `refreshPopupView` recomputes groups
+*before* enforcing the cap. The other way round, the cap counts a stale set of
+slots and evicts the wrong number.
+
+**One critical protects its whole deck**, including its normal siblings.
+Evicting the rest would leave a stack that no longer reads as one conversation,
+and the rows around an alert are usually the context for it.
 
 ---
 
-## Checkpoint B: Module complete
+## Checkpoint B: Module complete  [REACHED]
 
-- [ ] Every acceptance criterion in `docs/spec/SPEC-stacking.md` is met
-- [ ] Both `popup-cap` follow-ups are done, not deferred again
-- [ ] `node --test "test/**/*.test.js"` passes
-- [ ] `./scripts/check-delta.sh` passes and is within the 60-line budget
-- [ ] `qmllint` reports no warning category upstream does not also report
-- [ ] `git merge upstream` is a no-op
-- [ ] Notifications, DND, history, `showHistory`, restore and the cap all still work
-- [ ] Settings and history left as they were found
+- [x] Every acceptance criterion in `docs/spec/SPEC-stacking.md` is met
+- [x] Both `popup-cap` follow-ups are done, not deferred again
+- [x] `node --test "test/**/*.test.js"` passes — 150 tests
+- [x] `./scripts/check-delta.sh` passes at `+39/60`, well inside the budget
+- [x] `qmllint` reports no warning category upstream does not also report
+- [x] `git merge upstream` is a no-op
+- [x] Notifications, DND, history, `showHistory`, restore and the cap all still work
+- [x] `NotificationLogic.js` and `components/NotificationCard.qml` still byte-identical to upstream
+- [x] Settings restored and test entries cleared from history
 - [ ] Ready for review; **all five original asks are delivered** and only `center-ui` remains
+
+**stacking is complete, and with it all five original asks.** Delegate keying
+remains the one thing proposed but not built: the Repeater binds a JS array, so
+a changed `groups` recreates delegates. No flicker was observed, so it has not
+been needed — but it has not been done either.

@@ -1,5 +1,6 @@
-// Which toasts leave when the screen is full. Pure, so the rule is settled
-// before anything touches a live model.
+// Which toasts leave when the screen is full. Every case here goes through
+// groupPopups with grouping OFF, so one row is one slot -- which is exactly how
+// popup-cap shipped, and proves stacking did not change it.
 
 var test = require("node:test")
 var assert = require("node:assert")
@@ -24,21 +25,26 @@ function ids(picked) {
   return picked.map(function(p) { return p.originalId })
 }
 
+// Grouping off: one row per group, so this is popup-cap's original behaviour.
+function evictFlat(rowList, max, critical) {
+  return policy.groupsToEvict(policy.groupPopups(rowList, false), max, critical)
+}
+
 test("nothing is evicted at or under the cap", function() {
-  assert.deepStrictEqual(policy.rowsToEvict(rows(3), 3, CRITICAL), [])
-  assert.deepStrictEqual(policy.rowsToEvict(rows(1), 3, CRITICAL), [])
-  assert.deepStrictEqual(policy.rowsToEvict([], 3, CRITICAL), [])
+  assert.deepStrictEqual(evictFlat(rows(3), 3, CRITICAL), [])
+  assert.deepStrictEqual(evictFlat(rows(1), 3, CRITICAL), [])
+  assert.deepStrictEqual(evictFlat([], 3, CRITICAL), [])
 })
 
 test("over the cap it evicts exactly the overflow", function() {
-  assert.strictEqual(policy.rowsToEvict(rows(4), 3, CRITICAL).length, 1)
-  assert.strictEqual(policy.rowsToEvict(rows(20), 3, CRITICAL).length, 17)
-  assert.strictEqual(policy.rowsToEvict(rows(20), 1, CRITICAL).length, 19)
+  assert.strictEqual(evictFlat(rows(4), 3, CRITICAL).length, 1)
+  assert.strictEqual(evictFlat(rows(20), 3, CRITICAL).length, 17)
+  assert.strictEqual(evictFlat(rows(20), 1, CRITICAL).length, 19)
 })
 
 // The newest is what the user is most likely reading.
 test("the oldest go and the newest stay", function() {
-  var picked = policy.rowsToEvict(rows(20), 3, CRITICAL)
+  var picked = evictFlat(rows(20), 3, CRITICAL)
   assert.deepStrictEqual(ids(picked).sort(function(a, b) { return a - b }),
     [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17])
   ;[18, 19, 20].forEach(function(kept) {
@@ -47,7 +53,7 @@ test("the oldest go and the newest stay", function() {
 })
 
 test("identities carry originalId and timestamp, never an index", function() {
-  var picked = policy.rowsToEvict(rows(5), 3, CRITICAL)
+  var picked = evictFlat(rows(5), 3, CRITICAL)
   picked.forEach(function(p) {
     assert.strictEqual(typeof p.originalId, "number")
     assert.strictEqual(typeof p.timestamp, "number")
@@ -59,28 +65,28 @@ test("identities carry originalId and timestamp, never an index", function() {
 // A cap is a comfort feature. Dropping an emergency alert to honour one is a
 // bug no default makes right.
 test("criticals are never evicted", function() {
-  var picked = policy.rowsToEvict(rows(6, { 1: { urgency: CRITICAL }, 2: { urgency: CRITICAL } }), 3, CRITICAL)
+  var picked = evictFlat(rows(6, { 1: { urgency: CRITICAL }, 2: { urgency: CRITICAL } }), 3, CRITICAL)
   assert.strictEqual(ids(picked).indexOf(1), -1)
   assert.strictEqual(ids(picked).indexOf(2), -1)
 })
 
 test("a screen of criticals exceeds the cap rather than dropping one", function() {
   var all = rows(5).map(function(r) { r.urgency = CRITICAL; return r })
-  assert.deepStrictEqual(policy.rowsToEvict(all, 1, CRITICAL), [])
-  assert.deepStrictEqual(policy.rowsToEvict(all, 0, CRITICAL), [])
+  assert.deepStrictEqual(evictFlat(all, 1, CRITICAL), [])
+  assert.deepStrictEqual(evictFlat(all, 0, CRITICAL), [])
 })
 
 test("with a mix it takes only non-criticals, and stops when they run out", function() {
   // 3 critical + 3 normal, cap 2 -> overflow is 4, but only 3 are evictable.
   var mixed = rows(6, { 4: { urgency: CRITICAL }, 5: { urgency: CRITICAL }, 6: { urgency: CRITICAL } })
-  var picked = policy.rowsToEvict(mixed, 2, CRITICAL)
+  var picked = evictFlat(mixed, 2, CRITICAL)
   assert.deepStrictEqual(ids(picked).sort(function(a, b) { return a - b }), [1, 2, 3])
   assert.strictEqual(picked.length, 3, "not the full overflow of 4 — criticals are not available")
 })
 
 test("low urgency is evictable; only critical is exempt", function() {
   var low = rows(4, { 1: { urgency: LOW } })
-  assert.deepStrictEqual(ids(policy.rowsToEvict(low, 3, CRITICAL)), [1])
+  assert.deepStrictEqual(ids(evictFlat(low, 3, CRITICAL)), [1])
 })
 
 // The row order given is not guaranteed, so selection must sort rather than
@@ -91,20 +97,20 @@ test("selection does not depend on the order rows arrive in", function() {
   var shuffled = [newestFirst[2], newestFirst[0], newestFirst[4], newestFirst[1], newestFirst[3]]
   var expected = [1, 2]
   ;[newestFirst, oldestFirst, shuffled].forEach(function(order) {
-    assert.deepStrictEqual(ids(policy.rowsToEvict(order, 3, CRITICAL)).sort(), expected)
+    assert.deepStrictEqual(ids(evictFlat(order, 3, CRITICAL)).sort(), expected)
   })
 })
 
 test("malformed input yields an empty selection rather than throwing", function() {
   var bad = [null, undefined, "rows", 42, {}, [null], [undefined], ["x"], [{}], [{ timestamp: "x" }]]
   bad.forEach(function(r) {
-    assert.deepStrictEqual(policy.rowsToEvict(r, 3, CRITICAL), [], "for " + JSON.stringify(r))
+    assert.deepStrictEqual(evictFlat(r, 3, CRITICAL), [], "for " + JSON.stringify(r))
   })
 })
 
 test("a missing or nonsense cap evicts nothing", function() {
   ;[0, -1, null, undefined, NaN, "three", {}].forEach(function(max) {
-    assert.deepStrictEqual(policy.rowsToEvict(rows(10), max, CRITICAL), [], "for cap " + String(max))
+    assert.deepStrictEqual(evictFlat(rows(10), max, CRITICAL), [], "for cap " + String(max))
   })
 })
 
@@ -112,13 +118,13 @@ test("a missing or nonsense cap evicts nothing", function() {
 // critical. Treating nothing as evictable only means the cap is exceeded.
 test("a missing critical urgency value evicts nothing", function() {
   ;[null, undefined, NaN, "critical"].forEach(function(crit) {
-    assert.deepStrictEqual(policy.rowsToEvict(rows(10), 3, crit), [], "for " + String(crit))
+    assert.deepStrictEqual(evictFlat(rows(10), 3, crit), [], "for " + String(crit))
   })
 })
 
 test("rowsToEvict does not mutate the rows it is given", function() {
   var input = rows(5)
   var copy = JSON.parse(JSON.stringify(input))
-  policy.rowsToEvict(input, 2, CRITICAL)
+  evictFlat(input, 2, CRITICAL)
   assert.deepStrictEqual(input, copy)
 })

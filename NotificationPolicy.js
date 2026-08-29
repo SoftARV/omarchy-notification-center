@@ -283,41 +283,54 @@ function historyRowIndex(rows, originalId, timestamp) {
 
 // ---------------------------------------------------------------- the cap
 
-// Which rows leave when the screen holds more than maxVisible. Returns
-// identities, never indices: indices shift as the model mutates, and the list
-// shape lets stacking later swap a row for a whole group.
-function rowsToEvict(rows, maxVisible, criticalUrgency) {
-  if (!Array.isArray(rows)) return []
+// Which rows leave when the screen holds more than maxVisible slots. A slot is
+// a deck, so six pings cost the same as one notification, and a whole deck
+// leaves at once. Returns identities, never indices.
+function groupsToEvict(groups, maxVisible, criticalUrgency) {
+  if (!Array.isArray(groups)) return []
 
   var max = Number(maxVisible)
   if (!isFinite(max) || max < 1) return []
-  // Without a usable critical value everything would look evictable, and a
+  // Without a usable critical value every deck would look evictable, and a
   // dropped alert is worse than an over-full screen.
   if (typeof criticalUrgency !== "number" || !isFinite(criticalUrgency)) return []
 
   var usable = []
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i]
-    if (!row || typeof row !== "object") continue
-    var ts = Number(row.timestamp)
-    var id = Number(row.originalId)
-    if (!isFinite(ts) || !isFinite(id)) continue
-    usable.push({ originalId: id, timestamp: ts, urgency: row.urgency })
+  for (var i = 0; i < groups.length; i++) {
+    var group = groups[i]
+    if (!group || typeof group !== "object" || !Array.isArray(group.rows)) continue
+    if (group.rows.length === 0) continue
+
+    // One critical anywhere in a deck protects the whole deck: evicting its
+    // neighbours would leave a stack that no longer reads as one conversation.
+    var hasCritical = false
+    for (var r = 0; r < group.rows.length; r++) {
+      if (group.rows[r] && group.rows[r].urgency === criticalUrgency) hasCritical = true
+    }
+    usable.push({ group: group, newest: Number(group.newest) || 0, critical: hasCritical })
   }
 
   var overflow = usable.length - max
   if (overflow < 1) return []
 
-  // Oldest first, so the newest -- what the user is most likely reading --
-  // survives. Copied before sorting; the caller's array is not ours to reorder.
-  var candidates = usable.slice().sort(function(a, b) { return a.timestamp - b.timestamp })
+  // Oldest by the deck's NEWEST row, so a deck still receiving outlives an
+  // older idle one.
+  var candidates = usable.slice().sort(function(a, b) { return a.newest - b.newest })
 
   var picked = []
-  for (var c = 0; c < candidates.length && picked.length < overflow; c++) {
-    // A cap is a comfort feature; honouring it by dropping an emergency alert
-    // is a bug no default makes right. The cap is exceeded instead.
-    if (candidates[c].urgency === criticalUrgency) continue
-    picked.push({ originalId: candidates[c].originalId, timestamp: candidates[c].timestamp })
+  var taken = 0
+  for (var c = 0; c < candidates.length && taken < overflow; c++) {
+    if (candidates[c].critical) continue
+    var rows = candidates[c].group.rows
+    for (var k = 0; k < rows.length; k++) {
+      var row = rows[k]
+      if (!row) continue
+      var id = Number(row.originalId)
+      var ts = Number(row.timestamp)
+      if (!isFinite(id) || !isFinite(ts)) continue
+      picked.push({ originalId: id, timestamp: ts })
+    }
+    taken++
   }
   return picked
 }
