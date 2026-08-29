@@ -37,6 +37,12 @@ function groupPopups(rows, groupByApp)
 `popupModel.countChanged`, on `settingsChanged`, and after `refreshPopup`
 rewrites a row. The Repeater binds to `forkState.groups` (hook 7).
 
+**Groups are ordered by their newest member, newest group first.** A deck rises
+to the top when it receives a notification, matching the flat stack today where
+the newest is always on top — the deck you just got a message in is the one you
+look at. It falls out of scanning a newest-first row list and taking each app's
+first appearance.
+
 Recompute-on-change rather than an incrementally maintained model: with a cap
 of at most 20 rows the cost is nothing, and incremental maintenance of a
 grouped model is where the subtle bugs live.
@@ -46,15 +52,43 @@ grouped model is where the subtle bugs live.
 `components/NotificationDeck.qml` renders one group.
 
 **Collapsed** (default, group of *n* > 1): the newest row drawn as a full
-`NotificationCard`; up to two ghost edges peeking below it, each offset ~4px
-down, scaled ~0.98, progressively dimmed, drawn *behind*; a count badge showing
-*n* in the card's corner. A group of 1 renders as a plain card with no badge
-and no ghosts — indistinguishable from today.
+`NotificationCard`, unchanged, with up to two ghost edges peeking below it —
+each offset ~4px down, scaled ~0.98, progressively dimmed, drawn *behind*. It
+should read at a glance as a stack of cards, one on top of another.
+
+**No count badge.** The stack itself is the signal that there is more than one;
+a number on the card is information the user did not ask for. A group of 1
+renders as a plain card with no ghosts — pixel-identical to today.
+
+**The card is not modified.** `components/NotificationCard.qml` stays
+byte-identical to upstream, as it has all along. Everything the deck adds —
+the ghost edges, the offsets, the expansion — lives in
+`components/NotificationDeck.qml` and is composed *around* the card, never
+inside it.
 
 **Expanded** (any pointer inside the deck): the group's rows fan into a normal
 vertical column with standard spacing, each a full card with its own close
 button and click target. The transition is a height/opacity animation on the
 column, ~160ms, matching the shell's existing animation durations.
+
+**At most 5 cards are drawn when expanded**, newest first. The cap counts
+*decks*, not rows, so a single deck can hold many notifications — and expanding
+twelve would run straight off the bottom of the screen, the exact clutter this
+initiative exists to remove.
+
+**The ghost edges stay while expanded if rows are held back.** An earlier draft
+put a `+N more` line under the fan. It was wrong twice over: it is a *count*,
+which is what a collapsed deck deliberately does not show, and it was bare text
+with no card behind it — every other element in the column is a card with its
+own background, so the label rendered onto the wallpaper in a colour meant for a
+card surface and read as an unexplained gap rather than a label. Reported from
+the live shell and replaced.
+
+Keeping the ghosts says "there is more behind" in the vocabulary the collapsed
+deck already established, and needs no new one.
+
+The undrawn rows are not dropped: they keep running their own countdowns and
+reach history like any other. They are simply not rendered.
 
 ### Timers
 
@@ -113,7 +147,10 @@ cap shreds it:
   against `maxVisiblePopups`.
 - Eviction removes a whole group at once, choosing the one whose newest row is
   oldest.
-- Five notifications from one app produce one deck showing a count of 5.
+- Five notifications from one app produce one deck that reads as a stack of
+  cards — the front card unchanged, with ghost edges behind it.
+- No count is drawn on a collapsed deck.
+- `components/NotificationCard.qml` is still byte-identical to upstream.
 - Notifications from three apps produce three decks, in first-appearance order.
 - One notification produces a card visually identical to today's.
 - Hovering a collapsed deck expands it; every card in it is independently
@@ -127,6 +164,12 @@ cap shreds it:
   reordering or duplicating the deck.
 - A group whose rows all expire leaves no empty deck behind.
 - Notifications with an empty `app` never share a deck.
+- Groups are ordered by their newest member; a deck rises to the top when it
+  receives a notification.
+- An expanded deck draws at most 5 cards and keeps its ghost edges when rows are
+  held back; the undrawn rows still expire on their own schedule and still reach
+  history.
+- No count is drawn anywhere, expanded or collapsed.
 
 ## Verification
 
@@ -149,7 +192,11 @@ omarchy-shell notifications setGrouping off
   delegates unless the group objects are stable. If cards visibly flicker on
   insert, the fix is keying delegates by group key, not abandoning the
   recompute model.
-- **Expansion near the screen edge.** A deck of eight expanding downward can
-  run off-screen — the exact clutter this initiative exists to remove. Cap the
-  expanded fan at a readable number (proposed: 5, with "+3 more" routing to the
-  center) rather than letting it grow unbounded.
+- **Expansion near the screen edge.** Settled: at most 5 cards are drawn when
+  expanded, with ghost edges standing in for the remainder. A tall deck can still exceed a
+  short screen if `maxVisiblePopups` is also high; that is a product of two
+  user-chosen numbers rather than something this module can bound alone.
+- **Rows in a deck are unbounded.** The cap limits decks, so a chatty app can
+  accumulate rows indefinitely if their duration is 0. In practice any non-zero
+  duration drains them. A per-deck row limit was considered and rejected: it
+  would silently drop notifications the user never saw.

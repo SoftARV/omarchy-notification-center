@@ -997,77 +997,14 @@ Item {
         spacing: Style.space(8)
 
         Repeater {
-          model: popupModel
+          // fork: one deck per group of same-app notifications -- SPEC-stacking.md
+          model: forkState.groups
 
-          // The delegate is a slot Item that owns lifetime timer state. The
-          // actual visuals live in NotificationCard, which the history panel
-          // also reuses.
-          delegate: Item {
-            id: cardSlot
-            required property int index
-            required property string app
-            required property string appIcon
-            required property string summary
-            required property string body
-            required property string image
-            required property string glyph
-            required property int urgency
-            required property double expireTimeout
-            required property double timestamp
-
-            // Each card sizes itself based on mode (text vs media); the slot
-            // tracks the card so the column auto-fits to whichever is widest.
-            Layout.preferredWidth: card.implicitWidth
-            // fork: AlignHCenter, upstream aligns right -- SPEC.md
-            Layout.alignment: Qt.AlignHCenter
-            implicitHeight: card.implicitHeight
-
-            readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
-            property real remainingLifetime: 1.0
-            readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
-
-            // A client updating this notification in place rewrites the row
-            // under the card (see refreshPopup). New text deserves a full look,
-            // so the countdown starts over instead of running out the clock the
-            // superseded text was already most of the way through. Delegates
-            // keep their own row as the model changes around them, so only a
-            // real content change lands here.
-            onSummaryChanged: cardSlot.remainingLifetime = 1.0
-            onBodyChanged: cardSlot.remainingLifetime = 1.0
-            onImageChanged: cardSlot.remainingLifetime = 1.0
-
-            Timer {
-              interval: 50
-              repeat: true
-              running: cardSlot.ticking
-              onTriggered: {
-                if (cardSlot.lifetime <= 0) return
-                cardSlot.remainingLifetime -= 50.0 / cardSlot.lifetime
-                if (cardSlot.remainingLifetime <= 0) {
-                  cardSlot.remainingLifetime = 0
-                  service.expirePopup(cardSlot.index)
-                }
-              }
-            }
-
-            NotificationCard {
-              id: card
-              // fork: horizontalCenter, upstream anchors right -- SPEC.md
-              anchors.horizontalCenter: parent.horizontalCenter
-              app: cardSlot.app
-              appIcon: cardSlot.appIcon
-              summary: cardSlot.summary
-              body: cardSlot.body
-              image: cardSlot.image
-              urgency: cardSlot.urgency
-              timestamp: cardSlot.timestamp
-              cornerRadius: service.cornerRadius
-              fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
-              glyph: cardSlot.glyph
-
-              onCloseRequested: service.dismissPopup(cardSlot.index)
-              onCardClicked: service.invokePopupDefault(cardSlot.index)
-            }
+          // fork: the slot itself is components/PopupSlot.qml -- SPEC-stacking.md
+          delegate: NotificationDeck {
+            required property var modelData
+            notificationState: forkState
+            group: modelData
           }
         }
       }

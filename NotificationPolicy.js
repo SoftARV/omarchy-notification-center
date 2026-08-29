@@ -283,41 +283,125 @@ function historyRowIndex(rows, originalId, timestamp) {
 
 // ---------------------------------------------------------------- the cap
 
-// Which rows leave when the screen holds more than maxVisible. Returns
-// identities, never indices: indices shift as the model mutates, and the list
-// shape lets stacking later swap a row for a whole group.
-function rowsToEvict(rows, maxVisible, criticalUrgency) {
-  if (!Array.isArray(rows)) return []
+// Which rows leave when the screen holds more than maxVisible slots. A slot is
+// a deck, so six pings cost the same as one notification, and a whole deck
+// leaves at once. Returns identities, never indices.
+function groupsToEvict(groups, maxVisible, criticalUrgency) {
+  if (!Array.isArray(groups)) return []
 
   var max = Number(maxVisible)
   if (!isFinite(max) || max < 1) return []
-  // Without a usable critical value everything would look evictable, and a
+  // Without a usable critical value every deck would look evictable, and a
   // dropped alert is worse than an over-full screen.
   if (typeof criticalUrgency !== "number" || !isFinite(criticalUrgency)) return []
 
   var usable = []
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i]
-    if (!row || typeof row !== "object") continue
-    var ts = Number(row.timestamp)
-    var id = Number(row.originalId)
-    if (!isFinite(ts) || !isFinite(id)) continue
-    usable.push({ originalId: id, timestamp: ts, urgency: row.urgency })
+  for (var i = 0; i < groups.length; i++) {
+    var group = groups[i]
+    if (!group || typeof group !== "object" || !Array.isArray(group.rows)) continue
+    if (group.rows.length === 0) continue
+
+    // One critical anywhere in a deck protects the whole deck: evicting its
+    // neighbours would leave a stack that no longer reads as one conversation.
+    var hasCritical = false
+    for (var r = 0; r < group.rows.length; r++) {
+      if (group.rows[r] && group.rows[r].urgency === criticalUrgency) hasCritical = true
+    }
+    usable.push({ group: group, newest: Number(group.newest) || 0, critical: hasCritical })
   }
 
   var overflow = usable.length - max
   if (overflow < 1) return []
 
-  // Oldest first, so the newest -- what the user is most likely reading --
-  // survives. Copied before sorting; the caller's array is not ours to reorder.
-  var candidates = usable.slice().sort(function(a, b) { return a.timestamp - b.timestamp })
+  // Oldest by the deck's NEWEST row, so a deck still receiving outlives an
+  // older idle one.
+  var candidates = usable.slice().sort(function(a, b) { return a.newest - b.newest })
 
   var picked = []
-  for (var c = 0; c < candidates.length && picked.length < overflow; c++) {
-    // A cap is a comfort feature; honouring it by dropping an emergency alert
-    // is a bug no default makes right. The cap is exceeded instead.
-    if (candidates[c].urgency === criticalUrgency) continue
-    picked.push({ originalId: candidates[c].originalId, timestamp: candidates[c].timestamp })
+  var taken = 0
+  for (var c = 0; c < candidates.length && taken < overflow; c++) {
+    if (candidates[c].critical) continue
+    var rows = candidates[c].group.rows
+    for (var k = 0; k < rows.length; k++) {
+      var row = rows[k]
+      if (!row) continue
+      var id = Number(row.originalId)
+      var ts = Number(row.timestamp)
+      if (!isFinite(id) || !isFinite(ts)) continue
+      picked.push({ originalId: id, timestamp: ts })
+    }
+    taken++
   }
   return picked
+}
+
+// ------------------------------------------------------------- grouping
+
+// The flat row list as decks: [{ key, app, rows, newest }]. Groups are ordered
+// by their newest member, so a deck rises when it receives a notification --
+// matching the flat stack's newest-first order.
+function groupPopups(rows, groupByApp) {
+  if (!Array.isArray(rows)) return []
+  var grouped = groupByApp === undefined || groupByApp === null ? true : !!groupByApp
+
+  var groups = []
+  var byKey = {}
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (!row || typeof row !== "object") continue
+
+    var app = String(row.app === null || row.app === undefined ? "" : row.app).trim()
+    var ts = Number(row.timestamp)
+    if (!isFinite(ts)) ts = 0
+
+    var shared = grouped && app.length > 0
+    var key = shared ? app.toLowerCase()
+                     : "row:" + String(row.originalId) + "-" + String(row.timestamp) + "-" + i
+
+    // Anonymous and ungrouped rows are never registered for lookup, so they
+    // cannot collide with an app whose name happens to look like a row key.
+    var group = shared ? byKey[key] : null
+    if (!group) {
+      group = { key: key, app: app, rows: [], newest: ts }
+      if (shared) byKey[key] = group
+      groups.push(group)
+    }
+    group.rows.push(row)
+    if (ts > group.newest) {
+      group.newest = ts
+      // The newest row names the deck, so a rename by replaces_id shows.
+      group.app = app
+    }
+  }
+
+  // Sorted rather than trusted: popupModel is newest-first, but nothing
+  // guarantees a caller passes it that way, and the wrong assumption would put
+  // a stale deck at the top.
+  for (var g = 0; g < groups.length; g++) {
+    groups[g].rows.sort(function(a, b) { return Number(b.timestamp) - Number(a.timestamp) })
+  }
+  groups.sort(function(a, b) { return b.newest - a.newest })
+  return groups
+}
+
+// What a deck draws: the front card plus ghost edges when collapsed, or a fan
+// of up to fanLimit cards when expanded. `hidden` rows still exist and still
+// run their own countdowns -- they are simply not drawn.
+function deckLayout(total, expanded, fanLimit) {
+  var n = Number(total)
+  if (!isFinite(n) || n < 1) return { shown: 0, ghosts: 0, hidden: 0 }
+  n = Math.floor(n)
+
+  var limit = Number(fanLimit)
+  if (!isFinite(limit) || limit < 1) limit = 1
+
+  // Two ghosts read as a stack; more would just be noise behind the card.
+  if (!expanded) return { shown: 1, ghosts: Math.min(n - 1, 2), hidden: n - 1 }
+
+  // Held-back rows keep their ghosts: the same signal, rather than a count the
+  // user did not ask for and a bare label with no card behind it.
+  var shown = Math.min(n, limit)
+  var hidden = n - shown
+  return { shown: shown, ghosts: Math.min(hidden, 2), hidden: hidden }
 }

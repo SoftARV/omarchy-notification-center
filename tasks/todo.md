@@ -1,219 +1,330 @@
-# Tasks: popup-cap
+# Tasks: stacking
 
 Plan: [`tasks/plan.md`](plan.md). Spec:
-[`docs/spec/SPEC-popup-cap.md`](../docs/spec/SPEC-popup-cap.md).
+[`docs/spec/SPEC-stacking.md`](../docs/spec/SPEC-stacking.md).
 Every task clears the Definition of Done in
 [`docs/spec/SPEC.md`](../docs/spec/SPEC.md); commits follow `CLAUDE.local.md`
-(conventional commits via `git-commit-helper`, scope `popup-cap`, comment blocks
+(conventional commits via `git-commit-helper`, scope `stacking`, comment blocks
 capped at three lines).
 
 ---
 
-## Phase 1: What to evict
+## Phase 1: The view, and a safe delegate
 
-## Task 1: Eviction selection  [DONE]
+## Task 1: groupPopups  [DONE]
 
-**Description:** Given the rows on screen, the cap and the critical urgency
-value, decide which rows leave. Pure, so the rule is settled before anything
-touches a live model.
+**Description:** Turn the flat, newest-first row list into a list of groups.
+Pure, so the grouping rule is settled before any QML depends on it.
 
-Returns a **list of row identities** (`originalId` + `timestamp`), never
-indices and never a single row. Indices shift as the model mutates, and the
-list shape is what lets `stacking` later swap one row for a whole group without
-changing the mechanism.
+Groups are ordered by their newest member — a deck rises when it receives a
+notification. Rows keep their newest-first order within a group.
 
 **Acceptance criteria:**
-- [x] `rowsToEvict(rows, max, criticalUrgency)` returns `[]` when the count is at or under the cap
-- [x] Over the cap it returns exactly `count - max` identities
-- [x] It selects the oldest rows by timestamp, never the newest
-- [x] Critical rows are never selected
-- [x] When every row is critical it returns `[]`, even far over the cap — the cap is exceeded rather than an alert dropped
-- [x] With a mix, it evicts only non-criticals and stops when they run out, even if still over the cap
-- [x] Identities carry `originalId` and `timestamp`, not indices
-- [x] Malformed rows, a non-array, a zero or negative cap, and a missing urgency value all yield `[]` rather than throwing
+- [x] `groupPopups(rows, groupByApp)` returns `[{ key, app, rows, newest }]`
+- [x] Rows from the same app share one group; the key is the app trimmed and lowercased
+- [x] `"Slack"`, `"slack"` and `" Slack "` group together
+- [x] Rows with an empty or missing `app` each get their own group — an empty key would herd unrelated senders together
+- [x] Groups are ordered by their newest member, newest group first
+- [x] Rows inside a group stay newest-first
+- [x] `newest` is the group's newest row timestamp
+- [x] `groupByApp: false` returns one group per row, in the order given
+- [x] Malformed rows, a non-array and a missing flag yield `[]` or sane groups, never a throw
 
 **Verification:**
-- [x] `node --test "test/**/*.test.js"` → all pass, including `test/popup-cap.test.js`
-- [x] A test with 20 rows and cap 3 asserts the 17 oldest are chosen and the 3 newest survive
-- [x] A test with 5 criticals and cap 1 asserts `[]`
-- [x] A test with 3 criticals + 3 normals and cap 2 asserts only normals are chosen
+- [x] `node --test "test/**/*.test.js"` → all pass, including `test/stacking.test.js`
+- [x] A test asserts a deck rises to the top when it gains a newer row
+- [x] A test asserts two empty-`app` rows do **not** share a group
+- [x] A test asserts `groupByApp: false` reproduces the input order exactly
 - [x] `./scripts/check-delta.sh` → passes; this task touches no upstream file
 
 **Dependencies:** None
 
 **Files touched:**
-- `NotificationPolicy.js` (`rowsToEvict`)
-- `test/popup-cap.test.js` (new — 13 tests)
+- `NotificationPolicy.js` (`groupPopups`)
+- `test/stacking.test.js` (new — 16 tests)
 
 **Estimated scope:** S (2 files)
 
-**"Exactly the overflow" has one deliberate exception.** With three criticals
-and three normals at cap 2, the overflow is four but only three rows are
-evictable — so three leave and the screen holds three, one over the cap. The
-criteria are worded as if the overflow is always available; it is not, and the
-critical exemption wins. A test pins that case specifically.
+**Anonymous rows are never registered for lookup.** A first attempt namespaced
+keys as `app:slack` to keep them from colliding with the `row:<id>-<ts>-<i>`
+form used for ungrouped and anonymous rows — but the spec says the key *is* the
+app trimmed and lowercased, and four tests said so too. Instead, only shared app
+groups go in the lookup table; anonymous ones are pushed straight onto the list.
+Collision becomes impossible without namespacing the key, and the spec holds.
 
-**Two failure directions, one chosen on purpose.** A missing or unparseable
-critical-urgency value makes everything look evictable, which could drop an
-alert. It returns `[]` instead: the cap is exceeded rather than an emergency
-notification dropped. The same reasoning covers a nonsense cap.
+**Ordering is computed, not trusted.** `popupModel` is newest-first, but nothing
+guarantees a caller passes it that way, and the wrong assumption would put a
+stale deck at the top. Both the group order and the rows within each group are
+sorted; a test feeds the same rows in two different orders and asserts identical
+output.
 
-**Selection sorts rather than trusting the order it is handed.** `popupModel`
-is newest-first today, but nothing guarantees the caller passes it that way, and
-a wrong assumption would evict the newest toasts. Tested with newest-first,
-oldest-first and shuffled input.
+**Group rows are the caller's own row objects**, not copies — the deck renders
+them directly. Pinned by a test using `strictEqual` on identity.
+
+**The Task 4 problem, made concrete:** 12 rows across 3 apps is 3 decks, but
+`rowsToEvict` on the raw rows at cap 3 selects **9 rows** — it would shred all
+three decks. That is exactly what `slotCount` and group-aware eviction fix.
 
 ---
 
-## Phase 2: When to evict
+## Task 2: Extract PopupSlot.qml, dismiss by identity  [DONE]
 
-## Task 2: Enforce the cap, and a smoke script to see it  [DONE]
+**Description:** Move the Repeater's delegate body into
+`components/PopupSlot.qml` **verbatim**, and replace its two index-based calls
+with identity ones. This is hook 7 and the riskiest edit in the project.
 
-**Description:** The sidecar watches `service.popupModel`'s count and evicts
-when it rises above the cap. No `Service.qml` hook: `popupModel` is already
-exposed as an alias for consumers outside its id scope.
+**Nothing should look or behave differently afterwards.** That is the whole
+point of doing it before grouping: the risky move is verified on its own, and
+the deck is then built on a delegate already proven in its new home.
 
-The watcher defers through `Qt.callLater`. Reacting synchronously to
-`countChanged` would re-enter a model mid-mutation — the crash upstream's own
-`Qt.callLater` comment warns about.
-
-Also builds `scripts/smoke.sh`, which `SPEC.md` has referenced in four places
-since `fork-seam` without it existing. A cap cannot be verified by hand without
-a repeatable burst.
+`PopupSlot.qml` starts as a verbatim copy so that diffing a future upstream
+delegate against it stays meaningful — the mitigation `SPEC-fork-seam.md`
+records for hook 7.
 
 **Acceptance criteria:**
-- [x] `maxVisiblePopups: 3` and a burst of 20 leaves 3 toasts on screen
-- [x] The newest 3 survive; the evicted are the oldest
-- [x] Every evicted notification is in history immediately afterwards
-- [x] No evicted notification leaves a file behind in `notifications/`
-- [x] Lowering the cap while toasts are on screen evicts down to the new value
-- [x] Raising it does not resurrect anything
-- [x] A screen of criticals over the cap keeps them all
-- [x] `scripts/smoke.sh` fires a documented, repeatable burst and is not shipped by `install.sh`
-- [x] No `Service.qml` change: `check-delta.sh` still reports `+36/60`
+- [x] `components/PopupSlot.qml` contains upstream's delegate body, unchanged apart from the identity calls and the properties it now receives
+- [x] `service.dismissPopup(index)` and `service.expirePopup(index)` are replaced by `forkState.dismissRow(originalId, timestamp)` and `forkState.expireRow(...)`
+- [x] `forkState.indexOfRow`, `dismissRow`, `expireRow` and `invokeRow` resolve against `popupModel` at call time; no index is ever stored
+- [x] Hook 7 carries a `// fork:` marker naming `SPEC-stacking.md`
+- [x] `check-delta.sh` passes, and the added-line count is reported
+- [x] **No visual or behavioural change** — confirmed by the user, 2026-08-29
 
 **Verification:**
 - [x] `./install.sh && omarchy restart shell`
-- [x] `setMaxVisible 3`, run `./scripts/smoke.sh`, count toasts on screen → 3
-- [x] Compare the survivors' summaries against the last 3 sent
-- [x] `notification-history list` → the evicted ones are there
-- [x] `ls ~/.local/state/omarchy/notifications/*.json` → one file per visible toast, no orphans
-- [x] `setMaxVisible 1` with 3 on screen → 2 evicted immediately
-- [x] Send 5 criticals with cap 2 → all 5 stay; dismiss them by hand
-- [x] Time a burst of 20 at cap 1 and record the file-queue cost in the plan
-- [x] **Visual**: the column no longer runs off the bottom of the screen — confirmed by the user, 2026-08-29
+- [x] `notify-send` → the toast looks identical — confirmed by the user
+- [x] It expires on its own after the configured duration
+- [x] Hovering pauses the timer: a 15 s toast held under the pointer survived 32 s
+- [x] **Right-click** dismisses it and nothing else — confirmed on a live pointer. There is no close button; the card uses `Qt.RightButton` for `closeRequested`
+- [x] `./scripts/smoke.sh` at cap 4 → still exactly 4, newest kept
+- [x] Left-clicking a toast with a stored action runs it — `/tmp/click-worked` was created, and it archived to history
+- [x] `showHistory` replay and a restart restore both still render
+- [x] `git diff upstream -- Service.qml` reviewed: the removed block is contiguous, so a future upstream change to it is one readable conflict
+- [x] `qmllint Service.qml components/PopupSlot.qml` → no warning category upstream does not also report
 
-**Dependencies:** Task 1
+**Dependencies:** Task 1 (not strictly — may be built in parallel)
 
 **Files touched:**
-- `NotificationState.qml` (`slotCount`, the watcher, `enforceCap`, identity lookup)
-- `scripts/smoke.sh` (new)
-- `test/comments.test.js` (now globs `scripts/`, so a new script cannot escape the rule)
+- `components/PopupSlot.qml` (new — upstream's delegate body)
+- `Service.qml` (hook 7 — 82 upstream lines out, 32 in, one contiguous hunk)
+- `NotificationState.qml` (`indexOfRow`, `dismissRow`, `expireRow`, `invokeRow`)
+- `test/stacking.test.js` (3 tests guarding the index hazard)
+- `docs/spec/SPEC-fork-seam.md` (hook 7 spent; usage now 47/60)
 
-**Estimated scope:** S (3 files). **Zero `Service.qml` hooks** — the guard reads
-`+36/60`, exactly as before this task.
+**Estimated scope:** M (5 files)
 
-**Two checks proved nothing the first time and were redone.** The survivors of
-the first burst had already expired naturally by the time I measured, so
-"no orphaned files" read 0 files against 0 toasts, and "lowering the cap evicts"
-compared 0 against 0. Re-run with `setDuration normal 0` so the toasts stay put:
-then 3 files against 3 toasts, and lowering to 1 visibly evicted 2 keeping the
-newest.
+**A real bug, caught because the toast never expired.** The delegate first
+passed `forkState: forkState` — and since a binding resolves the object's own
+properties before the component's ids, that bound the property to *itself*. It
+came out null, so `service` was null, so `lifetime` was 0, so the countdown
+never ran. The property is now `notificationState`, and the comment says why it
+is neither `state` (QQuickItem has one) nor `forkState` (the id in
+`Service.qml`).
 
-**Measured, not asserted:** 20 notifications at cap 3 leave `smoke 18/19/20`;
-all 20 reach history; lowering to 1 leaves `smoke 20`; raising to 5 resurrects
-nothing; 5 criticals at cap 2 all stay, and a normal arriving among them is the
-one evicted.
+**qmllint caught the other half of the same class.** `property var state` on an
+`Item` collides with `QQuickItem.state` — the identical trap that made the mount
+`forkState` rather than `state` back at planning. Renamed before it could bite.
 
-**Eviction storm timing**, which the plan asked for: 20 notifications at cap 1,
-each triggering an eviction, settled in 4.2 s wall clock — of which about 4 s is
-the script's own `sleep`. One toast left, shell responsive throughout.
+**The conflict surface is what hook 7 promised.** The removal is a single
+contiguous hunk, `@@ -979,82 +988,32 @@` — a future upstream rewrite of that
+delegate is one readable conflict resolved the same way every time.
+
+**Three tests now guard the module's main hazard**: `components/PopupSlot.qml`
+and `components/NotificationDeck.qml` may not call `dismissPopup`, `expirePopup`
+or `invokePopupDefault`, and may not declare an `index` property at all.
+
+**What is verified and what is not.** Identity-based *expiry* is proven — the
+countdown fired and removed the right row. `dismissRow` and `invokeRow` use the
+identical `indexOfRow` mechanism, but they are reached from a pointer, so that
+is an argument rather than a check. Left for the checkpoint, where the user
+confirmed both.
+
+**Two claims corrected by the user.** I described an X button and a countdown
+ring in the manual-test brief. Neither exists: `closeRequested` is emitted on
+`Qt.RightButton` from the card's `MouseArea`, and `remainingLifetime` is never
+passed to the card — it has no such property, so nothing renders elapsed time.
+Both were checkable in one grep and I asserted them instead.
 
 ---
 
-## Checkpoint A: A burst is bounded  [REACHED]
+## Checkpoint A: The extraction is invisible
 
-- [x] A burst of 20 leaves exactly the cap on screen, newest kept
-- [x] Everything evicted is in history, with no file left behind
-- [x] Criticals survive the cap, and a normal among them is evicted instead
-- [x] `node --test "test/**/*.test.js"` (117) and `./scripts/check-delta.sh` (`+36/60`) pass
-- [x] Settings restored and smoke entries cleared from history afterwards
-- [x] Reviewed and approved by the user, 2026-08-29, visual check included
+- [x] A single toast is indistinguishable from before the change — confirmed by the user
+- [x] Timer verified: 3 s duration expires in 3.0 s, 8 s in 8.1 s, critical stays past 12 s
+- [x] Replay and restore both still render, and both respect the cap
+- [x] Hover-pause, right-click dismiss and left-click action all confirmed on a live pointer
+- [x] The cap still holds at 4 under a smoke burst of 20, newest kept
+- [x] `node --test "test/**/*.test.js"` (136) and `./scripts/check-delta.sh` (`+47/60`) pass
+- [x] The `Service.qml` diff is one contiguous removed block: `@@ -979,82 +988,32 @@`
+- [x] Reviewed and approved by the user, 2026-08-29 — the hook the fork most depends on
 
 ---
 
-## Phase 3: The other ways rows arrive
+## Phase 2: The deck
 
-## Task 3: Replay and restore  [DONE]
+## Task 3: NotificationDeck.qml  [DONE]
 
-**Description:** Rows also arrive from `showHistory` replaying history as
-toasts, and from the restart restore. The watcher should already cover both,
-since it reacts to the model rather than to a call site — this task proves it
-and fixes what it finds.
+**Description:** Render a group. Collapsed it is the newest card, unchanged,
+with ghost edges peeking behind it so a glance says "there is more than one".
+Hovered it fans out. The Repeater binds to `forkState.groups`.
 
-It also settles `SPEC.md` open question 2: with the cap in place, `showHistory`
-stays exactly as it is, because the replay can no longer flood the screen.
+**No count is drawn.** The stack itself is the signal — a number on the card is
+information the user did not ask for. A group of one renders exactly as a plain
+card does today: no ghosts, no difference.
+
+**The card is not modified.** `components/NotificationCard.qml` stays
+byte-identical to upstream. Everything the deck adds is composed *around* it.
 
 **Acceptance criteria:**
-- [x] `showHistory` with `historyLimit: 100` leaves at most `maxVisiblePopups` toasts on screen
-- [x] The replay keeps the newest entries, not an arbitrary subset
-- [x] A restart with more saved popups than the cap leaves exactly the cap's worth, newest kept
-- [x] The cap runs once after the restore batch settles, not per row
-- [x] A restored critical is never evicted, even over the cap
-- [x] Replay and restore leave no orphaned files
-- [x] `showHistory` still behaves as it always did in every other respect
+- [x] Five notifications from one app produce one deck that reads as a stack of cards — confirmed by the user
+- [x] No count is drawn on a collapsed deck
+- [x] `components/NotificationCard.qml` is still byte-identical to upstream — `git diff upstream` is empty
+- [x] Three apps produce three decks, newest-group first — confirmed by the user
+- [x] A deck rises to the top when it receives a new notification — confirmed by the user
+- [x] A group of one is visually identical to a plain card — confirmed by the user
+- [x] Hovering a deck expands it; every card is independently readable, closable and clickable — confirmed by the user
+- [x] Hovering **anywhere** in a deck pauses **every** countdown in it; leaving resumes them — confirmed by the user
+- [x] An expanded deck draws at most 5 cards and shows `+N more` beyond — confirmed by the user
+- [x] Undrawn rows still expire on their own and still reach history — **measured**: 7 rows at 5 s, only 5 ever drawn, all 7 reached history
+- [x] Dismissing the middle card of an expanded deck removes that one and no other — confirmed by the user
+- [x] `setGrouping off` renders exactly today's flat stack; toggling it live re-lays out — confirmed by the user
+- [x] A `replaces_id` update to a grouped notification updates in place without reordering or duplicating — **measured**: 2 rows before and after, body updated, no duplicate
+- [x] A group whose rows all expire leaves no empty deck — **measured**: 0 rows and no deck after all expired
+- [x] Delegates are keyed by group key, so a stable group does not flicker on every arrival — see the note below
 
 **Verification:**
-- [x] `setHistoryLimit 100`, generate 20 history entries, `setMaxVisible 3`, `omarchy-shell notifications showHistory` → 3 toasts
-- [x] Generate 10 live toasts with `duration 0` so they persist, `omarchy restart shell` → the cap's worth returns, newest kept
-- [x] Same with criticals → all restored, none evicted
-- [x] `ls ~/.local/state/omarchy/notifications/*.json` after each → matches what is on screen
-- [x] `./scripts/check-delta.sh` and the full suite pass
+- [x] `APPS="Slack" COUNT=5 ./scripts/smoke.sh` → one deck with ghost edges behind the front card
+- [x] `APPS="Slack Discord Mail" COUNT=9 ./scripts/smoke.sh` → three decks
+- [x] Send to an existing deck → it rises to the top
+- [x] Hover a deck: it fans out; hover a middle card and close it; the others survive
+- [x] Hold the pointer on a deck past its duration → nothing expires; move away → they resume
+- [x] `COUNT=12 APPS="Slack" ./scripts/smoke.sh`, hover → 5 cards and `+7 more` (verified as a 7-deck → 5 cards + `+2 more`)
+- [x] `setGrouping off` → flat stack; `setGrouping on` → decks, live
+- [x] `omarchy-notification-send` twice with the same replaces id → one card updates in place
+- [x] **Visual**: no flicker as notifications arrive into an existing deck
 
 **Dependencies:** Task 2
 
-**Files touched:** none. The watcher written in Task 2 already covered both
-paths, because it reacts to the model rather than to a call site. This task was
-verification, and it found nothing to fix.
+**Files touched:**
+- `components/NotificationDeck.qml` (new)
+- `NotificationPolicy.js` (`deckLayout`)
+- `NotificationState.qml` (`groups`, `recomputeGroups`, `refreshPopupView`)
+- `Service.qml` (Repeater model — hook 7 now `+39/60`, **down** from 47)
+- `test/stacking.test.js` (6 layout tests, plus a narrowed hazard guard)
 
-**Estimated scope:** S — verification only. `check-delta.sh` unchanged at `+36/60`.
+**Estimated scope:** M (5 files)
 
-**Two measurements were wrong before they were right.** Counting popup state
-files said "0 toasts" after a replay — but replayed rows come *from* history and
-never get popup files, so the file count cannot see them. Counted through the
-model instead (`dismissOne` until it reports `none`): 3 at cap 3, 8 at cap 8.
+**Every row gets a slot, even undrawn ones.** A slot owns the countdown, so a
+row rendered by nothing would never expire and never reach history. The deck
+instantiates a slot per row and hides those past the fan limit. Measured: 7 rows
+at 5 s each, only 5 ever drawn, **all 7** expired and archived.
 
-And the first restore attempt proved nothing: lowering the cap evicted down to 3
-*before* the restart, so only 3 files were ever saved. Redone by editing
-`maxVisiblePopups` directly in `notifications.json` while the shell held 10
-sticky toasts, so it restarted with 10 saved popups and a cap of 3. Result: 3
-restored, `smoke 8/9/10` — the newest.
+**Two failures the tests could not have caught, both found in the shell log.** A
+duplicate `Component.onCompleted` in `NotificationState.qml` stopped the plugin
+loading at all — `Type NotificationState unavailable`, and the D-Bus name simply
+went unowned. And `Style.font.small` does not exist; the token is `bodySmall`.
+Neither is expressible as a unit test; the journal is where QML load failures
+surface.
 
-**Which entries survive was proved, not assumed.** Replayed toasts have no files
-to read, so the newest and oldest history summaries were probed with
-`notifications dismiss <summary>`: newest → `ok`, oldest → `none`.
+**`check-delta.sh` rejected the delegate hunk** because a blank line separated
+it from the `model:` change, leaving it without a leading marker. Two markers
+now, one per hunk.
 
-**Restored criticals are exempt end to end:** 5 criticals saved, cap lowered to
-2 on disk, restart → all 5 came back. Dismissing them left 0 files, so nothing
-was orphaned.
+**A guard of mine was over-strict and was narrowed, not deleted.** The rule "no
+deck component holds an index property" failed on the ghost-offset Repeater and
+the visibility threshold — both layout, neither identity. Narrowed to what
+actually matters: no index may be passed to `dismissRow`, `expireRow` or
+`invokeRow`, and `PopupSlot.qml` still holds no index at all. Banning what is
+merely adjacent to a hazard costs a guard its credibility the first time it is
+wrong.
 
-**On "once after the batch, not per row":** both orderings end with the newest
-`cap` rows, so the outcome cannot distinguish them. The `Qt.callLater` in the
-watcher coalesces the burst of `countChanged` signals into one call, which is
-the intended behaviour; the observable result is correct either way.
+**Delegate keying is unresolved rather than done.** The Repeater binds a JS
+array, so a changed `groups` recreates delegates. No flicker was observed, so
+the mitigation the spec proposed has not been needed — but it has also not been
+implemented, and that is a difference worth stating.
+
+---
+
+## Phase 3: Teaching the cap about decks
+
+## Task 4: slotCount and group-aware eviction  [DONE]
+
+**Description:** The two follow-ups `popup-cap` recorded. Without them a deck of
+six counts as six slots and the cap shreds it.
+
+**Acceptance criteria:**
+- [x] `forkState.slotCount` is `groups.length`, not `popupModel.count`
+- [x] A deck of six counts as **one** slot against `maxVisiblePopups` — a 6-deck plus two singles all survived at cap 3
+- [x] Eviction removes every row of the chosen group at once — four decks of three at cap 2 left two whole decks
+- [x] "Oldest" is the group's **newest** row, so a deck still receiving is not evicted before an older idle one
+- [x] A group containing any critical is never evicted — a deck of normal + critical survived at cap 1; its normal sibling stayed too
+- [x] With grouping off, eviction behaves exactly as `popup-cap` shipped it — every popup-cap test now runs through `groupPopups(rows, false)`
+- [x] Every evicted row reaches history and leaves no file behind — six evicted rows, six in history, zero orphans
+
+**Verification:**
+- [x] `node --test "test/**/*.test.js"` → selection tests cover group eviction
+- [x] `setMaxVisible 3`, `APPS="A B C D E" COUNT=20 ./scripts/smoke.sh` → three decks on screen
+- [x] A deck of six with cap 3 alongside two others → all six rows stay, counted as one slot
+- [x] Keep sending to one deck while an older idle deck exists → the idle one goes first — covered by a unit test; the live case was not isolated
+- [x] A deck containing a critical survives the cap
+- [x] `setGrouping off` → `popup-cap`'s original behaviour returns — 8 rows at cap 3 left the newest 3
+- [x] `ls ~/.local/state/omarchy/notifications/*.json` → matches what is on screen
+
+**Dependencies:** Task 3
+
+**Files touched:**
+- `NotificationPolicy.js` (`groupsToEvict` replaces `rowsToEvict`)
+- `NotificationState.qml` (`slotCount` counts decks; groups recomputed before the cap reads them)
+- `test/stacking.test.js` (7 group-eviction tests)
+- `test/popup-cap.test.js` (re-pointed through `groupPopups(rows, false)`)
+
+**Estimated scope:** M (4 files). No `Service.qml` change: still `+39/60`.
+
+**`rowsToEvict` was replaced, not kept alongside.** With grouping off a group is
+one row, so `groupsToEvict` subsumes it exactly. Rather than leave a second
+tested-but-uncalled function — the mistake made with `hasUnreadIn` in
+`history-store` — every `popup-cap` test now builds its groups with
+`groupPopups(rows, false)` and calls the new function. That turns the whole
+original suite into the proof that grouping-off behaviour is unchanged.
+
+**Order matters and is now explicit.** `refreshPopupView` recomputes groups
+*before* enforcing the cap. The other way round, the cap counts a stale set of
+slots and evicts the wrong number.
+
+**One critical protects its whole deck**, including its normal siblings.
+Evicting the rest would leave a stack that no longer reads as one conversation,
+and the rows around an alert are usually the context for it.
 
 ---
 
 ## Checkpoint B: Module complete  [REACHED]
 
-- [x] Every acceptance criterion in `docs/spec/SPEC-popup-cap.md` is met, except those explicitly deferred to `stacking`
-- [x] `node --test "test/**/*.test.js"` passes — 117 tests
-- [x] `./scripts/check-delta.sh` passes, unchanged at `+36/60` — **no hook spent**
+- [x] Every acceptance criterion in `docs/spec/SPEC-stacking.md` is met
+- [x] Both `popup-cap` follow-ups are done, not deferred again
+- [x] `node --test "test/**/*.test.js"` passes — 150 tests
+- [x] `./scripts/check-delta.sh` passes at `+39/60`, well inside the budget
 - [x] `qmllint` reports no warning category upstream does not also report
 - [x] `git merge upstream` is a no-op
-- [x] Notifications, DND, history and `showHistory` all still work
-- [x] Settings restored to defaults and smoke entries cleared from history
-- [x] Reviewed and approved by the user, 2026-08-29, including a live spacing test at cap 5; `stacking` is next and inherits the two follow-ups recorded in its spec
+- [x] Notifications, DND, history, `showHistory`, restore and the cap all still work
+- [x] `NotificationLogic.js` and `components/NotificationCard.qml` still byte-identical to upstream
+- [x] Settings restored and test entries cleared from history
+- [x] Reviewed and approved by the user, 2026-08-29; **all five original asks are
+      delivered** and only `center-ui` remains
 
-**popup-cap is complete.** A burst no longer runs off the bottom of the screen,
-and it cost nothing from the hook budget.
+**A defect found by the user during review, and the fix.** An expanded deck of
+more than five showed a wider gap below it than a smaller deck did. Isolated by
+moving the big deck from top to middle — the gap followed the deck, not the
+position — and then by comparing a 5-deck against an 8-deck, which differ only
+in whether rows are held back. The cause was the `+N more` line: a *count*,
+which is exactly what a collapsed deck deliberately does not show, rendered as
+bare text with no card behind it, so it fell onto the wallpaper in a colour
+meant for a card surface. Replaced with ghost edges that persist while expanded.
+
+**Delegate keying is resolved as not needed.** Six notifications arriving into a
+live deck, three seconds apart, produced no flicker and no collapse under the
+pointer. The spec proposed keying delegates by group key as a mitigation; it is
+recorded here as unnecessary rather than quietly skipped.
+
+**stacking is complete, and with it all five original asks.** Delegate keying
+remains the one thing proposed but not built: the Repeater binds a JS array, so
+a changed `groups` recreates delegates. No flicker was observed, so it has not
+been needed — but it has not been done either.

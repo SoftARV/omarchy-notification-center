@@ -70,24 +70,31 @@ Item {
     root.newestHistoryTimestamp = rows.length > 0 ? Number(rows[0].timestamp || 0) : 0
   }
 
-  // How many slots the screen holds. One row is one slot until stacking lands
-  // and redefines this as groups.length -- see SPEC-popup-cap.md.
-  readonly property int slotCount:
-    root.service && root.service.popupModel ? root.service.popupModel.count : 0
+  // How many slots the screen holds. A deck is one slot however deep it is.
+  readonly property int slotCount: root.groups.length
 
   // Enforce the cap when the stack grows or the cap shrinks. Deferred through
   // Qt.callLater: reacting synchronously would re-enter a model mid-mutation,
   // the crash upstream's own callLater comment warns of.
   Connections {
     target: root.service ? root.service.popupModel : null
-    function onCountChanged() { Qt.callLater(root.enforceCap) }
+    function onCountChanged() { Qt.callLater(root.refreshPopupView) }
+    // setProperty, which is how a replaces_id update rewrites a row in place.
+    function onDataChanged() { Qt.callLater(root.recomputeGroups) }
   }
 
-  onSettingsChanged: Qt.callLater(root.enforceCap)
+  onSettingsChanged: Qt.callLater(root.refreshPopupView)
+
+  // Groups first: the cap counts them, so a stale view would cap the wrong
+  // number of slots.
+  function refreshPopupView() {
+    root.recomputeGroups()
+    root.enforceCap()
+  }
 
   // Identity, resolved at call time: every removal shifts the indices after it,
   // so an index collected up front would point at the wrong notification.
-  function popupIndexOf(originalId, timestamp) {
+  function indexOfRow(originalId, timestamp) {
     var model = root.service ? root.service.popupModel : null
     if (!model) return -1
     for (var i = 0; i < model.count; i++) {
@@ -98,26 +105,55 @@ Item {
     return -1
   }
 
+  // Every role a card draws, because the deck renders from these.
   function popupRows() {
     var model = root.service ? root.service.popupModel : null
     if (!model) return []
+    var roles = Policy.historyRoles()
     var out = []
     for (var i = 0; i < model.count; i++) {
       var row = model.get(i)
-      out.push({ originalId: row.originalId, timestamp: row.timestamp, urgency: row.urgency })
+      var plain = {}
+      for (var r = 0; r < roles.length; r++) plain[roles[r]] = row[roles[r]]
+      out.push(plain)
     }
     return out
+  }
+
+  // Recomputed rather than bound: a binding would not see setProperty, which is
+  // how a replaces_id update rewrites a row without changing the count.
+  property var groups: []
+
+  function recomputeGroups() {
+    root.groups = Policy.groupPopups(root.popupRows(), root.settings.groupByApp)
+  }
+
+  // What a slot calls instead of holding an index. Each resolves identity at
+  // call time, so a row removed in between is a no-op rather than a wrong hit.
+  function dismissRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.dismissPopup(index)
+  }
+
+  function expireRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.expirePopup(index)
+  }
+
+  function invokeRow(originalId, timestamp) {
+    var index = root.indexOfRow(originalId, timestamp)
+    if (index >= 0 && root.service) root.service.invokePopupDefault(index)
   }
 
   // expire, not dismiss: the user dismissed nothing, and expire() is what the
   // sender should hear. It also reuses upstream's archive-and-clean path.
   function enforceCap() {
     if (!root.service) return
-    var victims = Policy.rowsToEvict(
-      root.popupRows(), root.settings.maxVisiblePopups, NotificationUrgency.Critical)
+    var victims = Policy.groupsToEvict(
+      root.groups, root.settings.maxVisiblePopups, NotificationUrgency.Critical)
 
     for (var i = 0; i < victims.length; i++) {
-      var index = root.popupIndexOf(victims[i].originalId, victims[i].timestamp)
+      var index = root.indexOfRow(victims[i].originalId, victims[i].timestamp)
       if (index >= 0) root.service.expirePopup(index)
     }
   }
@@ -169,7 +205,10 @@ Item {
   }
 
   // After the service has had a tick to create its directories.
-  Component.onCompleted: Qt.callLater(root.loadHistory)
+  Component.onCompleted: {
+    Qt.callLater(root.loadHistory)
+    Qt.callLater(root.recomputeGroups)
+  }
 
   // Plain objects copied role by role: a ListModel element is not something
   // JSON.stringify can serialise directly.
