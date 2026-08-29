@@ -101,7 +101,7 @@ a repeatable burst.
 - [x] `setMaxVisible 1` with 3 on screen → 2 evicted immediately
 - [x] Send 5 criticals with cap 2 → all 5 stay; dismiss them by hand
 - [x] Time a burst of 20 at cap 1 and record the file-queue cost in the plan
-- [ ] **Visual**: confirm the column no longer runs off the bottom of the screen — **needs a human at the screen**
+- [x] **Visual**: the column no longer runs off the bottom of the screen — confirmed by the user, 2026-08-29
 
 **Dependencies:** Task 1
 
@@ -138,7 +138,7 @@ the script's own `sleep`. One toast left, shell responsive throughout.
 - [x] Criticals survive the cap, and a normal among them is evicted instead
 - [x] `node --test "test/**/*.test.js"` (117) and `./scripts/check-delta.sh` (`+36/60`) pass
 - [x] Settings restored and smoke entries cleared from history afterwards
-- [ ] Review with human before proceeding — including the visual check
+- [x] Reviewed and approved by the user, 2026-08-29, visual check included
 
 ---
 
