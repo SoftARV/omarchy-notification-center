@@ -307,7 +307,22 @@ and the rows around an alert are usually the context for it.
 - [x] Notifications, DND, history, `showHistory`, restore and the cap all still work
 - [x] `NotificationLogic.js` and `components/NotificationCard.qml` still byte-identical to upstream
 - [x] Settings restored and test entries cleared from history
-- [ ] Ready for review; **all five original asks are delivered** and only `center-ui` remains
+- [x] Reviewed and approved by the user, 2026-08-29; **all five original asks are
+      delivered** and only `center-ui` remains
+
+**A defect found by the user during review, and the fix.** An expanded deck of
+more than five showed a wider gap below it than a smaller deck did. Isolated by
+moving the big deck from top to middle — the gap followed the deck, not the
+position — and then by comparing a 5-deck against an 8-deck, which differ only
+in whether rows are held back. The cause was the `+N more` line: a *count*,
+which is exactly what a collapsed deck deliberately does not show, rendered as
+bare text with no card behind it, so it fell onto the wallpaper in a colour
+meant for a card surface. Replaced with ghost edges that persist while expanded.
+
+**Delegate keying is resolved as not needed.** Six notifications arriving into a
+live deck, three seconds apart, produced no flicker and no collapse under the
+pointer. The spec proposed keying delegates by group key as a mitigation; it is
+recorded here as unnecessary rather than quietly skipped.
 
 **stacking is complete, and with it all five original asks.** Delegate keying
 remains the one thing proposed but not built: the Repeater binds a JS array, so

@@ -207,7 +207,15 @@ test("a collapsed deck shows the front card and up to two ghost edges", function
 test("an expanded deck fans out up to the limit and holds back the rest", function() {
   assert.deepStrictEqual(policy.deckLayout(3, true, 5), { shown: 3, ghosts: 0, hidden: 0 })
   assert.deepStrictEqual(policy.deckLayout(5, true, 5), { shown: 5, ghosts: 0, hidden: 0 })
-  assert.deepStrictEqual(policy.deckLayout(12, true, 5), { shown: 5, ghosts: 0, hidden: 7 })
+})
+
+// Held-back rows keep their ghost edges rather than a "+N more" label. A count
+// is what the user rejected on a collapsed deck, and bare text below the fan
+// has no card behind it -- it reads as an unexplained gap, not a label.
+test("an expanded deck still shows ghosts when rows are held back", function() {
+  assert.deepStrictEqual(policy.deckLayout(12, true, 5), { shown: 5, ghosts: 2, hidden: 7 })
+  assert.deepStrictEqual(policy.deckLayout(6, true, 5), { shown: 5, ghosts: 1, hidden: 1 })
+  assert.deepStrictEqual(policy.deckLayout(5, true, 5).ghosts, 0, "nothing held back, no ghosts")
 })
 
 test("an empty deck draws nothing", function() {

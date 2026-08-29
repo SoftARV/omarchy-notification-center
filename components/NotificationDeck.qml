@@ -35,8 +35,9 @@ Item {
 
   HoverHandler { id: hover }
 
-  // Drawn first so they sit behind the fan. Each is a plain card edge: same
-  // background, radius and border colour, stepped down and dimmed.
+  // Behind the fan: a plain card edge, same background, radius and border,
+  // stepped down and dimmed. Shown collapsed, and while expanded if rows are
+  // held back -- the same signal either way, and never a count.
   Repeater {
     model: deck.layout.ghosts
 
@@ -89,17 +90,6 @@ Item {
       }
     }
 
-    // Says what is not drawn, only while expanded and only when there is more.
-    Text {
-      visible: deck.layout.hidden > 0 && deck.expanded
-      anchors.horizontalCenter: parent.horizontalCenter
-      text: "+" + deck.layout.hidden + " more"
-      color: Qt.darker(Color.notifications.text, 1.4)
-      font.pixelSize: Style.font.bodySmall
-      font.family: deck.notificationState && deck.notificationState.service
-        && deck.notificationState.service.shell && deck.notificationState.service.shell.bar
-        ? deck.notificationState.service.shell.bar.fontFamily : ""
-    }
   }
 
   Behavior on implicitHeight {

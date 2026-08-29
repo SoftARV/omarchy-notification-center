@@ -71,17 +71,24 @@ vertical column with standard spacing, each a full card with its own close
 button and click target. The transition is a height/opacity animation on the
 column, ~160ms, matching the shell's existing animation durations.
 
-**At most 5 cards are drawn when expanded**, newest first, with a `+N more`
-line when the deck holds more. That line is a disclosure of what is not drawn,
-not a badge on the card — it exists only while expanded and only when the deck
-exceeds five. The cap counts *decks*, not rows, so a single
-deck can hold many notifications — and expanding twelve would run straight off
-the bottom of the screen, the exact clutter this initiative exists to remove.
+**At most 5 cards are drawn when expanded**, newest first. The cap counts
+*decks*, not rows, so a single deck can hold many notifications — and expanding
+twelve would run straight off the bottom of the screen, the exact clutter this
+initiative exists to remove.
 
-The undrawn rows are not dropped: they stay in the badge count, keep running
-their own countdowns, and reach history like any other. They are simply not
-rendered. Once `center-ui` exists, `+N more` is the natural place to route to
-it; until then it is a label.
+**The ghost edges stay while expanded if rows are held back.** An earlier draft
+put a `+N more` line under the fan. It was wrong twice over: it is a *count*,
+which is what a collapsed deck deliberately does not show, and it was bare text
+with no card behind it — every other element in the column is a card with its
+own background, so the label rendered onto the wallpaper in a colour meant for a
+card surface and read as an unexplained gap rather than a label. Reported from
+the live shell and replaced.
+
+Keeping the ghosts says "there is more behind" in the vocabulary the collapsed
+deck already established, and needs no new one.
+
+The undrawn rows are not dropped: they keep running their own countdowns and
+reach history like any other. They are simply not rendered.
 
 ### Timers
 
@@ -159,8 +166,10 @@ cap shreds it:
 - Notifications with an empty `app` never share a deck.
 - Groups are ordered by their newest member; a deck rises to the top when it
   receives a notification.
-- An expanded deck draws at most 5 cards and shows `+N more` beyond that; the
-  undrawn rows still expire on their own schedule and still reach history.
+- An expanded deck draws at most 5 cards and keeps its ghost edges when rows are
+  held back; the undrawn rows still expire on their own schedule and still reach
+  history.
+- No count is drawn anywhere, expanded or collapsed.
 
 ## Verification
 
@@ -184,7 +193,7 @@ omarchy-shell notifications setGrouping off
   insert, the fix is keying delegates by group key, not abandoning the
   recompute model.
 - **Expansion near the screen edge.** Settled: at most 5 cards are drawn when
-  expanded, with `+N more` for the remainder. A tall deck can still exceed a
+  expanded, with ghost edges standing in for the remainder. A tall deck can still exceed a
   short screen if `maxVisiblePopups` is also high; that is a product of two
   user-chosen numbers rather than something this module can bound alone.
 - **Rows in a deck are unbounded.** The cap limits decks, so a chatty app can

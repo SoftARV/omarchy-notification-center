@@ -113,7 +113,7 @@ mistaken for a guarantee.
 - [x] Each of the four checks has been **observed to fail** when deliberately broken — a guard nobody has seen fail is not a guard. Doing this is what found the marker bug.
 - [x] `git merge upstream` reports "Already up to date."
 - [x] Notifications work on a live shell; 19 tests pass
-- [ ] Review with human before proceeding
+- [x] Reviewed and approved; shipped in PR #1
 
 ---
 

@@ -396,10 +396,12 @@ function deckLayout(total, expanded, fanLimit) {
   var limit = Number(fanLimit)
   if (!isFinite(limit) || limit < 1) limit = 1
 
-  if (!expanded) {
-    // Two ghosts read as a stack; more would just be noise behind the card.
-    return { shown: 1, ghosts: Math.min(n - 1, 2), hidden: n - 1 }
-  }
+  // Two ghosts read as a stack; more would just be noise behind the card.
+  if (!expanded) return { shown: 1, ghosts: Math.min(n - 1, 2), hidden: n - 1 }
+
+  // Held-back rows keep their ghosts: the same signal, rather than a count the
+  // user did not ask for and a bare label with no card behind it.
   var shown = Math.min(n, limit)
-  return { shown: shown, ghosts: 0, hidden: n - shown }
+  var hidden = n - shown
+  return { shown: shown, ghosts: Math.min(hidden, 2), hidden: hidden }
 }
