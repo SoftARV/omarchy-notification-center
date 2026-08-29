@@ -135,7 +135,14 @@ or `invokePopupDefault`, and may not declare an `index` property at all.
 **What is verified and what is not.** Identity-based *expiry* is proven — the
 countdown fired and removed the right row. `dismissRow` and `invokeRow` use the
 identical `indexOfRow` mechanism, but they are reached from a pointer, so that
-is an argument rather than a check. Left for the checkpoint.
+is an argument rather than a check. Left for the checkpoint, where the user
+confirmed both.
+
+**Two claims corrected by the user.** I described an X button and a countdown
+ring in the manual-test brief. Neither exists: `closeRequested` is emitted on
+`Qt.RightButton` from the card's `MouseArea`, and `remainingLifetime` is never
+passed to the card — it has no such property, so nothing renders elapsed time.
+Both were checkable in one grep and I asserted them instead.
 
 ---
 
@@ -156,15 +163,21 @@ is an argument rather than a check. Left for the checkpoint.
 
 ## Task 3: NotificationDeck.qml
 
-**Description:** Render a group. Collapsed by default with a count badge and
-ghost edges; fanned out while the pointer is inside it. The Repeater binds to
-`forkState.groups`.
+**Description:** Render a group. Collapsed it is the newest card, unchanged,
+with ghost edges peeking behind it so a glance says "there is more than one".
+Hovered it fans out. The Repeater binds to `forkState.groups`.
 
-A group of one must render exactly as a plain card does today — no badge, no
-ghosts, no difference.
+**No count is drawn.** The stack itself is the signal — a number on the card is
+information the user did not ask for. A group of one renders exactly as a plain
+card does today: no ghosts, no difference.
+
+**The card is not modified.** `components/NotificationCard.qml` stays
+byte-identical to upstream. Everything the deck adds is composed *around* it.
 
 **Acceptance criteria:**
-- [ ] Five notifications from one app produce one deck with a count of 5
+- [ ] Five notifications from one app produce one deck that reads as a stack of cards
+- [ ] No count is drawn on a collapsed deck
+- [ ] `components/NotificationCard.qml` is still byte-identical to upstream
 - [ ] Three apps produce three decks, newest-group first
 - [ ] A deck rises to the top when it receives a new notification
 - [ ] A group of one is visually identical to a plain card
@@ -179,7 +192,7 @@ ghosts, no difference.
 - [ ] Delegates are keyed by group key, so a stable group does not flicker on every arrival
 
 **Verification:**
-- [ ] `APPS="Slack" COUNT=5 ./scripts/smoke.sh` → one deck, badge 5
+- [ ] `APPS="Slack" COUNT=5 ./scripts/smoke.sh` → one deck with ghost edges behind the front card
 - [ ] `APPS="Slack Discord Mail" COUNT=9 ./scripts/smoke.sh` → three decks
 - [ ] Send to an existing deck → it rises to the top
 - [ ] Hover a deck: it fans out; hover a middle card and close it; the others survive
@@ -247,9 +260,3 @@ six counts as six slots and the cap shreds it.
 - [ ] Notifications, DND, history, `showHistory`, restore and the cap all still work
 - [ ] Settings and history left as they were found
 - [ ] Ready for review; **all five original asks are delivered** and only `center-ui` remains
-
-**Two claims corrected by the user.** I described an X button and a countdown
-ring in the manual-test brief. Neither exists: `closeRequested` is emitted on
-`Qt.RightButton` from the card's `MouseArea`, and `remainingLifetime` is never
-passed to the card — it has no such property, so nothing renders elapsed time.
-Both were checkable in one grep and I asserted them instead.
