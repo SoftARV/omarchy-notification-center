@@ -80,10 +80,17 @@ Item {
   // the crash upstream's own callLater comment warns of.
   Connections {
     target: root.service ? root.service.popupModel : null
-    function onCountChanged() { Qt.callLater(root.enforceCap) }
+    function onCountChanged() { Qt.callLater(root.refreshPopupView) }
+    // setProperty, which is how a replaces_id update rewrites a row in place.
+    function onDataChanged() { Qt.callLater(root.recomputeGroups) }
   }
 
-  onSettingsChanged: Qt.callLater(root.enforceCap)
+  onSettingsChanged: Qt.callLater(root.refreshPopupView)
+
+  function refreshPopupView() {
+    root.enforceCap()
+    root.recomputeGroups()
+  }
 
   // Identity, resolved at call time: every removal shifts the indices after it,
   // so an index collected up front would point at the wrong notification.
@@ -98,15 +105,27 @@ Item {
     return -1
   }
 
+  // Every role a card draws, because the deck renders from these.
   function popupRows() {
     var model = root.service ? root.service.popupModel : null
     if (!model) return []
+    var roles = Policy.historyRoles()
     var out = []
     for (var i = 0; i < model.count; i++) {
       var row = model.get(i)
-      out.push({ originalId: row.originalId, timestamp: row.timestamp, urgency: row.urgency })
+      var plain = {}
+      for (var r = 0; r < roles.length; r++) plain[roles[r]] = row[roles[r]]
+      out.push(plain)
     }
     return out
+  }
+
+  // Recomputed rather than bound: a binding would not see setProperty, which is
+  // how a replaces_id update rewrites a row without changing the count.
+  property var groups: []
+
+  function recomputeGroups() {
+    root.groups = Policy.groupPopups(root.popupRows(), root.settings.groupByApp)
   }
 
   // What a slot calls instead of holding an index. Each resolves identity at
@@ -186,7 +205,10 @@ Item {
   }
 
   // After the service has had a tick to create its directories.
-  Component.onCompleted: Qt.callLater(root.loadHistory)
+  Component.onCompleted: {
+    Qt.callLater(root.loadHistory)
+    Qt.callLater(root.recomputeGroups)
+  }
 
   // Plain objects copied role by role: a ListModel element is not something
   // JSON.stringify can serialise directly.

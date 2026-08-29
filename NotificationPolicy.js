@@ -371,3 +371,22 @@ function groupPopups(rows, groupByApp) {
   groups.sort(function(a, b) { return b.newest - a.newest })
   return groups
 }
+
+// What a deck draws: the front card plus ghost edges when collapsed, or a fan
+// of up to fanLimit cards when expanded. `hidden` rows still exist and still
+// run their own countdowns -- they are simply not drawn.
+function deckLayout(total, expanded, fanLimit) {
+  var n = Number(total)
+  if (!isFinite(n) || n < 1) return { shown: 0, ghosts: 0, hidden: 0 }
+  n = Math.floor(n)
+
+  var limit = Number(fanLimit)
+  if (!isFinite(limit) || limit < 1) limit = 1
+
+  if (!expanded) {
+    // Two ghosts read as a stack; more would just be noise behind the card.
+    return { shown: 1, ghosts: Math.min(n - 1, 2), hidden: n - 1 }
+  }
+  var shown = Math.min(n, limit)
+  return { shown: shown, ghosts: 0, hidden: n - shown }
+}

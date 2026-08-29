@@ -164,15 +164,76 @@ test("no deck component dismisses, expires or invokes by index", function() {
     "these take a popupModel index; use the identity helpers instead")
 })
 
-test("no deck component holds an index property at all", function() {
+// A slot draws one row and never needs to know where it sits.
+test("the slot component holds no index at all", function() {
+  var text = fs.readFileSync(path.join(ROOT, "components/PopupSlot.qml"), "utf8")
+  assert.ok(!/^\s*(required\s+)?property\s+int\s+index\b/m.test(text),
+    "a slot with an index would be one refactor away from dismissing by it")
+})
+
+// A deck needs a Repeater's own index for ghost offsets and for which cards are
+// drawn -- layout, not identity. An earlier version banned the property
+// outright and failed on both; the hazard is an index reaching a dismissal.
+test("no index is ever passed to a dismissal", function() {
   var offenders = []
   existing(DECK_FILES).forEach(function(file) {
     var text = fs.readFileSync(path.join(ROOT, file), "utf8")
     text.split("\n").forEach(function(line, i) {
-      if (/^\s*(required\s+)?property\s+int\s+index\b/.test(line)) {
-        offenders.push(file + ":" + (i + 1))
+      if (/\b(dismissRow|expireRow|invokeRow)\s*\([^)]*\bindex\b/.test(line)) {
+        offenders.push(file + ":" + (i + 1) + "  " + line.trim())
       }
     })
   })
-  assert.deepStrictEqual(offenders, [], "a stored index is stale as soon as a row is removed")
+  assert.deepStrictEqual(offenders, [], "dismiss by originalId and timestamp, never by position")
+})
+
+// ------------------------------------------------------------ deck layout
+
+// How many cards a deck draws, how many ghost edges peek behind, and how many
+// are held back. Pure, so the rules are testable without a screen.
+test("a lone notification is drawn plainly, with no ghosts", function() {
+  assert.deepStrictEqual(policy.deckLayout(1, false, 5), { shown: 1, ghosts: 0, hidden: 0 })
+  assert.deepStrictEqual(policy.deckLayout(1, true, 5), { shown: 1, ghosts: 0, hidden: 0 })
+})
+
+// The stack itself is the signal that there is more than one; no count is drawn.
+test("a collapsed deck shows the front card and up to two ghost edges", function() {
+  assert.deepStrictEqual(policy.deckLayout(2, false, 5), { shown: 1, ghosts: 1, hidden: 1 })
+  assert.deepStrictEqual(policy.deckLayout(3, false, 5), { shown: 1, ghosts: 2, hidden: 2 })
+  assert.deepStrictEqual(policy.deckLayout(12, false, 5), { shown: 1, ghosts: 2, hidden: 11 },
+    "ghosts stop at two however deep the stack")
+})
+
+test("an expanded deck fans out up to the limit and holds back the rest", function() {
+  assert.deepStrictEqual(policy.deckLayout(3, true, 5), { shown: 3, ghosts: 0, hidden: 0 })
+  assert.deepStrictEqual(policy.deckLayout(5, true, 5), { shown: 5, ghosts: 0, hidden: 0 })
+  assert.deepStrictEqual(policy.deckLayout(12, true, 5), { shown: 5, ghosts: 0, hidden: 7 })
+})
+
+test("an empty deck draws nothing", function() {
+  assert.deepStrictEqual(policy.deckLayout(0, false, 5), { shown: 0, ghosts: 0, hidden: 0 })
+  assert.deepStrictEqual(policy.deckLayout(0, true, 5), { shown: 0, ghosts: 0, hidden: 0 })
+})
+
+test("shown plus hidden always accounts for every row", function() {
+  for (var total = 0; total <= 20; total++) {
+    ;[true, false].forEach(function(expanded) {
+      var l = policy.deckLayout(total, expanded, 5)
+      assert.strictEqual(l.shown + l.hidden, total,
+        "lost a row at total=" + total + " expanded=" + expanded)
+    })
+  }
+})
+
+test("deckLayout survives nonsense arguments", function() {
+  ;[null, undefined, NaN, -3, "x", {}].forEach(function(total) {
+    var l = policy.deckLayout(total, false, 5)
+    assert.strictEqual(l.shown, 0, "for total " + String(total))
+    assert.strictEqual(l.ghosts, 0)
+    assert.strictEqual(l.hidden, 0)
+  })
+  ;[null, undefined, 0, -1, "x"].forEach(function(limit) {
+    var l = policy.deckLayout(10, true, limit)
+    assert.ok(l.shown >= 1, "a broken limit must still draw the front card")
+  })
 })

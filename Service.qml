@@ -997,23 +997,14 @@ Item {
         spacing: Style.space(8)
 
         Repeater {
-          model: popupModel
+          // fork: one deck per group of same-app notifications -- SPEC-stacking.md
+          model: forkState.groups
 
-          // fork: the slot moved to components/PopupSlot.qml so a deck can
-          // compose it, and it dismisses by identity -- SPEC-stacking.md
-          delegate: PopupSlot {
-            required property var model
+          // fork: the slot itself is components/PopupSlot.qml -- SPEC-stacking.md
+          delegate: NotificationDeck {
+            required property var modelData
             notificationState: forkState
-            originalId: model.originalId
-            timestamp: model.timestamp
-            app: model.app
-            appIcon: model.appIcon
-            summary: model.summary
-            body: model.body
-            image: model.image
-            glyph: model.glyph
-            urgency: model.urgency
-            expireTimeout: model.expireTimeout
+            group: modelData
           }
         }
       }

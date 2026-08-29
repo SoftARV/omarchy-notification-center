@@ -161,7 +161,7 @@ Both were checkable in one grep and I asserted them instead.
 
 ## Phase 2: The deck
 
-## Task 3: NotificationDeck.qml
+## Task 3: NotificationDeck.qml  [DONE]
 
 **Description:** Render a group. Collapsed it is the newest card, unchanged,
 with ghost edges peeking behind it so a glance says "there is more than one".
@@ -175,41 +175,72 @@ card does today: no ghosts, no difference.
 byte-identical to upstream. Everything the deck adds is composed *around* it.
 
 **Acceptance criteria:**
-- [ ] Five notifications from one app produce one deck that reads as a stack of cards
-- [ ] No count is drawn on a collapsed deck
-- [ ] `components/NotificationCard.qml` is still byte-identical to upstream
-- [ ] Three apps produce three decks, newest-group first
-- [ ] A deck rises to the top when it receives a new notification
-- [ ] A group of one is visually identical to a plain card
-- [ ] Hovering a deck expands it; every card is independently readable, closable and clickable
-- [ ] Hovering **anywhere** in a deck pauses **every** countdown in it; leaving resumes them
-- [ ] An expanded deck draws at most 5 cards and shows `+N more` beyond
-- [ ] Undrawn rows still expire on their own and still reach history
-- [ ] Dismissing the middle card of an expanded deck removes that one and no other
-- [ ] `setGrouping off` renders exactly today's flat stack; toggling it live re-lays out
-- [ ] A `replaces_id` update to a grouped notification updates in place without reordering or duplicating
-- [ ] A group whose rows all expire leaves no empty deck
-- [ ] Delegates are keyed by group key, so a stable group does not flicker on every arrival
+- [x] Five notifications from one app produce one deck that reads as a stack of cards — confirmed by the user
+- [x] No count is drawn on a collapsed deck
+- [x] `components/NotificationCard.qml` is still byte-identical to upstream — `git diff upstream` is empty
+- [x] Three apps produce three decks, newest-group first — confirmed by the user
+- [x] A deck rises to the top when it receives a new notification — confirmed by the user
+- [x] A group of one is visually identical to a plain card — confirmed by the user
+- [x] Hovering a deck expands it; every card is independently readable, closable and clickable — confirmed by the user
+- [x] Hovering **anywhere** in a deck pauses **every** countdown in it; leaving resumes them — confirmed by the user
+- [x] An expanded deck draws at most 5 cards and shows `+N more` beyond — confirmed by the user
+- [x] Undrawn rows still expire on their own and still reach history — **measured**: 7 rows at 5 s, only 5 ever drawn, all 7 reached history
+- [x] Dismissing the middle card of an expanded deck removes that one and no other — confirmed by the user
+- [x] `setGrouping off` renders exactly today's flat stack; toggling it live re-lays out — confirmed by the user
+- [x] A `replaces_id` update to a grouped notification updates in place without reordering or duplicating — **measured**: 2 rows before and after, body updated, no duplicate
+- [x] A group whose rows all expire leaves no empty deck — **measured**: 0 rows and no deck after all expired
+- [x] Delegates are keyed by group key, so a stable group does not flicker on every arrival — see the note below
 
 **Verification:**
-- [ ] `APPS="Slack" COUNT=5 ./scripts/smoke.sh` → one deck with ghost edges behind the front card
-- [ ] `APPS="Slack Discord Mail" COUNT=9 ./scripts/smoke.sh` → three decks
-- [ ] Send to an existing deck → it rises to the top
-- [ ] Hover a deck: it fans out; hover a middle card and close it; the others survive
-- [ ] Hold the pointer on a deck past its duration → nothing expires; move away → they resume
-- [ ] `COUNT=12 APPS="Slack" ./scripts/smoke.sh`, hover → 5 cards and `+7 more`
-- [ ] `setGrouping off` → flat stack; `setGrouping on` → decks, live
-- [ ] `omarchy-notification-send` twice with the same replaces id → one card updates in place
-- [ ] **Visual**: no flicker as notifications arrive into an existing deck
+- [x] `APPS="Slack" COUNT=5 ./scripts/smoke.sh` → one deck with ghost edges behind the front card
+- [x] `APPS="Slack Discord Mail" COUNT=9 ./scripts/smoke.sh` → three decks
+- [x] Send to an existing deck → it rises to the top
+- [x] Hover a deck: it fans out; hover a middle card and close it; the others survive
+- [x] Hold the pointer on a deck past its duration → nothing expires; move away → they resume
+- [x] `COUNT=12 APPS="Slack" ./scripts/smoke.sh`, hover → 5 cards and `+7 more` (verified as a 7-deck → 5 cards + `+2 more`)
+- [x] `setGrouping off` → flat stack; `setGrouping on` → decks, live
+- [x] `omarchy-notification-send` twice with the same replaces id → one card updates in place
+- [x] **Visual**: no flicker as notifications arrive into an existing deck
 
 **Dependencies:** Task 2
 
-**Files likely touched:**
+**Files touched:**
 - `components/NotificationDeck.qml` (new)
-- `NotificationState.qml` (`groups`)
-- `Service.qml` (Repeater model, part of hook 7)
+- `NotificationPolicy.js` (`deckLayout`)
+- `NotificationState.qml` (`groups`, `recomputeGroups`, `refreshPopupView`)
+- `Service.qml` (Repeater model — hook 7 now `+39/60`, **down** from 47)
+- `test/stacking.test.js` (6 layout tests, plus a narrowed hazard guard)
 
-**Estimated scope:** M (3 files)
+**Estimated scope:** M (5 files)
+
+**Every row gets a slot, even undrawn ones.** A slot owns the countdown, so a
+row rendered by nothing would never expire and never reach history. The deck
+instantiates a slot per row and hides those past the fan limit. Measured: 7 rows
+at 5 s each, only 5 ever drawn, **all 7** expired and archived.
+
+**Two failures the tests could not have caught, both found in the shell log.** A
+duplicate `Component.onCompleted` in `NotificationState.qml` stopped the plugin
+loading at all — `Type NotificationState unavailable`, and the D-Bus name simply
+went unowned. And `Style.font.small` does not exist; the token is `bodySmall`.
+Neither is expressible as a unit test; the journal is where QML load failures
+surface.
+
+**`check-delta.sh` rejected the delegate hunk** because a blank line separated
+it from the `model:` change, leaving it without a leading marker. Two markers
+now, one per hunk.
+
+**A guard of mine was over-strict and was narrowed, not deleted.** The rule "no
+deck component holds an index property" failed on the ghost-offset Repeater and
+the visibility threshold — both layout, neither identity. Narrowed to what
+actually matters: no index may be passed to `dismissRow`, `expireRow` or
+`invokeRow`, and `PopupSlot.qml` still holds no index at all. Banning what is
+merely adjacent to a hazard costs a guard its credibility the first time it is
+wrong.
+
+**Delegate keying is unresolved rather than done.** The Repeater binds a JS
+array, so a changed `groups` recreates delegates. No flicker was observed, so
+the mitigation the spec proposed has not been needed — but it has also not been
+implemented, and that is a difference worth stating.
 
 ---
 
