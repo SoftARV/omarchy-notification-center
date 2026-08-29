@@ -12,13 +12,18 @@ var MAX = 3
 
 // Upstream's files are not ours to trim. Service.qml is mixed, so only its
 // `// fork:` blocks are checked.
-var OURS = ["NotificationPolicy.js", "NotificationState.qml", "scripts/check-delta.sh"]
+var OURS = ["NotificationPolicy.js", "NotificationState.qml"]
 var UPSTREAM = ["NotificationLogic.js", "components/NotificationCard.qml"]
 
 function sourceFiles() {
   var files = OURS.slice()
   fs.readdirSync(path.join(ROOT, "test")).forEach(function(name) {
     if (name.endsWith(".js")) files.push("test/" + name)
+  })
+  // Globbed rather than listed, so a new script cannot escape the rule by
+  // nobody remembering to add it here.
+  fs.readdirSync(path.join(ROOT, "scripts")).forEach(function(name) {
+    if (name.endsWith(".sh")) files.push("scripts/" + name)
   })
   return files
 }

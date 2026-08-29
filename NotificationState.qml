@@ -70,6 +70,58 @@ Item {
     root.newestHistoryTimestamp = rows.length > 0 ? Number(rows[0].timestamp || 0) : 0
   }
 
+  // How many slots the screen holds. One row is one slot until stacking lands
+  // and redefines this as groups.length -- see SPEC-popup-cap.md.
+  readonly property int slotCount:
+    root.service && root.service.popupModel ? root.service.popupModel.count : 0
+
+  // Enforce the cap when the stack grows or the cap shrinks. Deferred through
+  // Qt.callLater: reacting synchronously would re-enter a model mid-mutation,
+  // the crash upstream's own callLater comment warns of.
+  Connections {
+    target: root.service ? root.service.popupModel : null
+    function onCountChanged() { Qt.callLater(root.enforceCap) }
+  }
+
+  onSettingsChanged: Qt.callLater(root.enforceCap)
+
+  // Identity, resolved at call time: every removal shifts the indices after it,
+  // so an index collected up front would point at the wrong notification.
+  function popupIndexOf(originalId, timestamp) {
+    var model = root.service ? root.service.popupModel : null
+    if (!model) return -1
+    for (var i = 0; i < model.count; i++) {
+      var row = model.get(i)
+      if (Number(row.originalId) === Number(originalId) &&
+          Number(row.timestamp) === Number(timestamp)) return i
+    }
+    return -1
+  }
+
+  function popupRows() {
+    var model = root.service ? root.service.popupModel : null
+    if (!model) return []
+    var out = []
+    for (var i = 0; i < model.count; i++) {
+      var row = model.get(i)
+      out.push({ originalId: row.originalId, timestamp: row.timestamp, urgency: row.urgency })
+    }
+    return out
+  }
+
+  // expire, not dismiss: the user dismissed nothing, and expire() is what the
+  // sender should hear. It also reuses upstream's archive-and-clean path.
+  function enforceCap() {
+    if (!root.service) return
+    var victims = Policy.rowsToEvict(
+      root.popupRows(), root.settings.maxVisiblePopups, NotificationUrgency.Critical)
+
+    for (var i = 0; i < victims.length; i++) {
+      var index = root.popupIndexOf(victims[i].originalId, victims[i].timestamp)
+      if (index >= 0) root.service.expirePopup(index)
+    }
+  }
+
   // Bumped whenever a history file is created or removed. Readers compare it
   // against the revision they rendered and re-read when it moves.
   property int historyRevision: 0

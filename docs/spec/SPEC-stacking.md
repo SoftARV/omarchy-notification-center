@@ -93,8 +93,26 @@ already this codebase's row identity — it is what `popupFileName()` is built
 from. Decks call these; nothing in a deck ever holds an index. `SPEC.md` lists
 index-based dismissal under **Never** for this reason.
 
+## Inherited from `popup-cap`
+
+`popup-cap` was built first, capping rows rather than groups. Two changes here
+are not optional — without them a deck of six pings counts as six slots and the
+cap shreds it:
+
+- `forkState.slotCount` becomes `forkState.groups.length` instead of
+  `popupModel.count`.
+- Eviction removes **every row of the chosen group**. The selector already
+  returns a list of row identities, so this is a change of selector, not of
+  mechanism.
+- "Oldest" becomes the group's *newest* row's timestamp, so a deck still
+  receiving is not evicted before an older idle one.
+
 ## Acceptance Criteria
 
+- `forkState.slotCount` counts groups, and a deck of six counts as one slot
+  against `maxVisiblePopups`.
+- Eviction removes a whole group at once, choosing the one whose newest row is
+  oldest.
 - Five notifications from one app produce one deck showing a count of 5.
 - Notifications from three apps produce three decks, in first-appearance order.
 - One notification produces a card visually identical to today's.
