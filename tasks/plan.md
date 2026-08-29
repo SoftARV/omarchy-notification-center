@@ -1,112 +1,126 @@
-# Implementation Plan: popup-cap
+# Implementation Plan: stacking
 
-Module `popup-cap` from [`docs/spec/CAPABILITY-MAP.md`](../docs/spec/CAPABILITY-MAP.md).
-Depends on `settings`, which is merged. Spec:
-[`docs/spec/SPEC-popup-cap.md`](../docs/spec/SPEC-popup-cap.md).
+Module `stacking` from [`docs/spec/CAPABILITY-MAP.md`](../docs/spec/CAPABILITY-MAP.md).
+Depends on `settings`; also completes two follow-ups `popup-cap` left behind.
+Spec: [`docs/spec/SPEC-stacking.md`](../docs/spec/SPEC-stacking.md).
 
 Earlier task lists: [`fork-seam`](fork-seam/plan.md), [`settings`](settings/plan.md),
-[`timing`](timing/plan.md), [`history-store`](history-store/plan.md).
+[`timing`](timing/plan.md), [`history-store`](history-store/plan.md),
+[`popup-cap`](popup-cap/plan.md).
 
 ## Overview
 
-A hard ceiling on how many toasts are on screen. The fourth of the five original
-asks, and the one that stops a burst running off the bottom of the display.
+Twelve Slack pings should occupy one card's worth of screen, not twelve. The
+last of the five original asks, and the riskiest module in the project.
 
-Everything the module needs already exists: `maxVisiblePopups` is in settings,
-eviction reuses upstream's `removePopup(index, "expire")`, and history already
-absorbs what leaves. The work is deciding *what* to evict and *when*.
+It is riskiest for three reasons, none of which apply to anything built so far:
+it spends **hook 7**, the largest change to `Service.qml` and the one
+`SPEC-fork-seam.md` flags as most exposed to an upstream restructure; it
+introduces a Repeater inside a Repeater, widening the incubation window upstream
+already guards with `Qt.callLater`; and the delegate it moves calls
+`dismissPopup(index)`, which is meaningless once a nested delegate's index is
+not the model's.
 
 ## What planning verified
 
-- **`popupModel` is reachable from the sidecar.** Upstream exposes it as
-  `property alias popupModel`, precisely so consumers outside its id scope can
-  bind to it. That is what makes a zero-hook design possible.
-- **Three code paths insert rows**, not one: `handleNotification`, the
-  `showHistory` replay, and the restart restore. The spec's "hook 6 alone"
-  would have missed the restore path.
-- **Upstream wraps every model mutation in `Qt.callLater`**, with a comment
-  naming the crash it prevents — `QV4::Object::insertMember` when a Repeater is
-  mid-incubation. Any reaction to `countChanged` must observe the same
-  discipline.
-- **`scripts/smoke.sh` does not exist**, though `SPEC.md` references it in four
-  places and this module's verification calls for it. A cap cannot be verified
-  without a repeatable burst, so it gets built here.
+- **The delegate calls `service.expirePopup(cardSlot.index)` and
+  `service.dismissPopup(cardSlot.index)`.** Both are index-based. Inside a deck
+  the local index is not the `popupModel` index, so both must become identity
+  calls or every dismissal in a deck hits the wrong notification.
+- **`NotificationCard` already exposes `readonly property bool hovered`**, so a
+  deck can aggregate hover across its cards without touching the card.
+- **The delegate uses `required property` bound to model roles**, plus
+  `Layout.preferredWidth` and `Layout.alignment` from its `ColumnLayout` parent.
+  Moving it into a component means those become plain properties set by the
+  deck, and the layout attached properties move with it.
+- **`popupModel` has no row limit.** The cap counts *slots*; once a slot is a
+  deck, the number of rows behind it is unbounded. That is what makes the
+  expanded-fan cap necessary rather than cosmetic.
 
 ## Decisions taken before planning
 
-1. **No `Service.qml` hook at all.** The sidecar watches `service.popupModel`'s
-   `count` and enforces the cap when it rises, covering arrival, replay and
-   restore through one mechanism. Hook 6 is released back to the budget.
-2. **Built ahead of `stacking`**, against the capability map's order.
-   `forkState.slotCount` becomes the interface: `popupModel.count` today,
-   `groups.length` once `stacking` lands. The eviction selector returns a *list*
-   of row identities so that later change is a change of selector, not of
-   mechanism. `SPEC-stacking.md` carries both follow-ups as acceptance criteria.
-3. **`SPEC.md` open question 2 is resolved.** The cap bounds the `showHistory`
-   replay automatically, so the keybind keeps its behaviour and no knob is added.
+1. **Groups are ordered by their newest member.** A deck rises to the top when
+   it receives a notification, matching the flat stack's newest-first ordering.
+2. **An expanded deck draws at most 5 cards**, with `+N more` beyond. Undrawn
+   rows keep their countdowns and still reach history — they are not dropped.
+   A per-deck row limit was rejected: it would silently discard notifications
+   the user never saw.
+3. **A per-deck row cap is not added.** Any non-zero duration drains a deck on
+   its own, and the alternative loses notifications silently.
 
 ## Architecture Decisions
 
-- **Never index into a model mid-mutation.** The eviction picks rows by
-  identity — `originalId` + `timestamp` — collects them all, and only then
-  removes them. `SPEC.md` bans index-based dismissal for exactly this reason,
-  and a loop calling `removePopup(i)` while indices shift underneath is the
-  classic version of that bug.
-- **Criticals are never evicted.** If every visible slot is critical the cap is
-  exceeded rather than honoured. A cap is a comfort feature; dropping an
-  emergency alert to satisfy one is a bug no default makes right.
-- **Eviction is `"expire"`, not `"dismiss"`.** The user dismissed nothing, and
-  `expire()` is the freedesktop-correct signal to the sender. It also means
-  eviction reuses upstream's archive-and-clean path and adds no file handling.
-- **Selection is pure and testable; the trigger is not.** Which rows to evict is
-  a function of rows, cap and urgency — unit tested. When to run it is a QML
-  binding, verified live.
+- **Extract before grouping.** Task 2 moves the delegate into `PopupSlot.qml`
+  and switches to identity-based dismissal, with **no visual change at all**.
+  That isolates the riskiest edit — hook 7 — behind a verification anybody can
+  run: nothing about the toasts should look or behave different. Grouping then
+  builds on a delegate that is already proven in its new home.
+- **The deck composes slots; it does not reimplement them.** `PopupSlot.qml`
+  keeps the lifetime timer, the hover pause and the restart-on-content-change
+  exactly as upstream wrote them. `NotificationDeck.qml` arranges slots and adds
+  the badge, the ghosts and the expansion.
+- **Nothing in a deck ever holds an index.** `dismissRow`/`invokeRow`/`indexOfRow`
+  resolve against `popupModel` at call time. `SPEC.md` lists index-based
+  dismissal under **Never**, and a nested Repeater is exactly where that bites.
+- **`popupModel` stays upstream's.** This module computes a *view* and never
+  writes to the model. Restore, `replaces_id`, archive and dismissal all keep
+  working because their source of truth is untouched.
+- **Recompute, do not maintain.** `groups` is rebuilt from rows on change. With
+  at most a few dozen rows the cost is nothing, and incremental maintenance of a
+  grouped model is where the subtle bugs live.
 
 ## Dependency Graph
 
 ```
-T1  eviction selection  (pure, unit tested)
+T1  groupPopups  (pure, unit tested)
+     │
+T2  PopupSlot.qml + identity dismissal + hook 7   <-- riskiest; no visual change
      │
      ▼
-T2  the cap enforced from the sidecar + scripts/smoke.sh
+  Checkpoint A -- the extraction is invisible
      │
      ▼
-  Checkpoint A -- a burst is bounded
+T3  NotificationDeck.qml: badge, ghosts, hover expansion, group hover-pause
      │
      ▼
-T3  the replay and restore paths
+T4  popup-cap follow-ups: slotCount and group-aware eviction
      │
      ▼
-  Checkpoint B -- module complete
+  Checkpoint B -- module complete, center-ui unblocked
 ```
+
+T1 is independent of T2 and could run alongside it; everything else is strictly
+sequential.
 
 ## Task List
 
 Tasks and checkpoints are in [`tasks/todo.md`](todo.md).
 
-### Phase 1: What to evict
-- [ ] Task 1: eviction selection
-
-### Phase 2: When to evict
-- [ ] Task 2: enforce the cap, and a smoke script to see it
+### Phase 1: The view, and a safe delegate
+- [ ] Task 1: `groupPopups`
+- [ ] Task 2: extract `PopupSlot.qml`, dismiss by identity
 - [ ] Checkpoint A
 
-### Phase 3: The other ways rows arrive
-- [ ] Task 3: replay and restore
+### Phase 2: The deck
+- [ ] Task 3: `NotificationDeck.qml`
+
+### Phase 3: Teaching the cap about decks
+- [ ] Task 4: `slotCount` and group-aware eviction
 - [ ] Checkpoint B
 
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Evicting by index while the model mutates | High — removes the wrong notification, or crashes | Select by identity, collect first, remove after. Pure selection is unit tested; the removal loop resolves each identity at call time |
-| Re-entering the model from `countChanged` | High — the `QV4::Object::insertMember` crash upstream documents | The watcher defers through `Qt.callLater`, the same discipline upstream applies to its own mutations |
-| An eviction loop that does not terminate | High — a hung shell | Eviction strictly reduces the count, and the critical exemption returns an empty selection rather than looping. A test asserts selection is empty when every row is critical |
-| Eviction storm at cap 1 under a burst | **Measured, not a concern.** | 20 notifications at cap 1, each triggering an eviction: 4.2 s wall clock of which ~4 s is the script's own sleeps, one toast left, shell responsive throughout |
-| A restored critical is evicted on restart | Medium — it survived a crash only to be dropped | Criticals are exempt everywhere, including the restore path. Verified by restarting with more criticals than the cap |
-| The cap fights `stacking` later | Known, recorded | `slotCount` is the interface and `SPEC-stacking.md` carries both required changes as acceptance criteria |
+| Hook 7 conflicts with a future upstream delegate rewrite | High — the one place a big upstream change lands on fork code | `PopupSlot.qml` starts as a **verbatim** copy of upstream's delegate body, so diffing upstream's new version against it stays meaningful. Task 2's diff is reviewed for exactly that |
+| A dismissal in a deck hits the wrong notification | High — silent, and destroys trust in the feature | Every call resolves identity at call time; no index is ever held. Verified by dismissing the *middle* card of an expanded deck and checking the other two survive |
+| Nested Repeater incubation crash | High — takes the shell down | Every mutation path reached from a deck keeps upstream's `Qt.callLater` discipline. The smoke burst at cap 1 is the stress case |
+| Delegate churn on recompute | Medium — visible flicker on every arrival | Delegates keyed by group key so a stable group keeps its delegate. If flicker appears the fix is keying, not abandoning recompute |
+| A deck of 20 expands off-screen | Medium — reintroduces the clutter this fixes | At most 5 drawn, `+N more` beyond |
+| `popup-cap` silently mis-counts until T4 | Medium — a deck of six would count as six slots | T4 is in this module, not a follow-up issue, and Checkpoint B does not pass without it |
+| Grouping breaks `replaces_id` in-place updates | Medium | The view is recomputed from rows; an update rewrites a row and the deck redraws. Verified with `omarchy-notification-send` replacing a grouped notification |
 
 ## Open Questions
 
-None blocking. `SPEC.md` open question 3 — whether `check-delta.sh` should be
-enforced by a hook — remains open and belongs to local tooling.
+None blocking. `SPEC.md` open question 3 — enforcing `check-delta.sh` with a
+hook — remains open and belongs to local tooling.

@@ -37,6 +37,12 @@ function groupPopups(rows, groupByApp)
 `popupModel.countChanged`, on `settingsChanged`, and after `refreshPopup`
 rewrites a row. The Repeater binds to `forkState.groups` (hook 7).
 
+**Groups are ordered by their newest member, newest group first.** A deck rises
+to the top when it receives a notification, matching the flat stack today where
+the newest is always on top — the deck you just got a message in is the one you
+look at. It falls out of scanning a newest-first row list and taking each app's
+first appearance.
+
 Recompute-on-change rather than an incrementally maintained model: with a cap
 of at most 20 rows the cost is nothing, and incremental maintenance of a
 grouped model is where the subtle bugs live.
@@ -55,6 +61,16 @@ and no ghosts — indistinguishable from today.
 vertical column with standard spacing, each a full card with its own close
 button and click target. The transition is a height/opacity animation on the
 column, ~160ms, matching the shell's existing animation durations.
+
+**At most 5 cards are drawn when expanded**, newest first, with a `+N more`
+line when the deck holds more. The cap counts *decks*, not rows, so a single
+deck can hold many notifications — and expanding twelve would run straight off
+the bottom of the screen, the exact clutter this initiative exists to remove.
+
+The undrawn rows are not dropped: they stay in the badge count, keep running
+their own countdowns, and reach history like any other. They are simply not
+rendered. Once `center-ui` exists, `+N more` is the natural place to route to
+it; until then it is a label.
 
 ### Timers
 
@@ -127,6 +143,10 @@ cap shreds it:
   reordering or duplicating the deck.
 - A group whose rows all expire leaves no empty deck behind.
 - Notifications with an empty `app` never share a deck.
+- Groups are ordered by their newest member; a deck rises to the top when it
+  receives a notification.
+- An expanded deck draws at most 5 cards and shows `+N more` beyond that; the
+  undrawn rows still expire on their own schedule and still reach history.
 
 ## Verification
 
@@ -149,7 +169,11 @@ omarchy-shell notifications setGrouping off
   delegates unless the group objects are stable. If cards visibly flicker on
   insert, the fix is keying delegates by group key, not abandoning the
   recompute model.
-- **Expansion near the screen edge.** A deck of eight expanding downward can
-  run off-screen — the exact clutter this initiative exists to remove. Cap the
-  expanded fan at a readable number (proposed: 5, with "+3 more" routing to the
-  center) rather than letting it grow unbounded.
+- **Expansion near the screen edge.** Settled: at most 5 cards are drawn when
+  expanded, with `+N more` for the remainder. A tall deck can still exceed a
+  short screen if `maxVisiblePopups` is also high; that is a product of two
+  user-chosen numbers rather than something this module can bound alone.
+- **Rows in a deck are unbounded.** The cap limits decks, so a chatty app can
+  accumulate rows indefinitely if their duration is 0. In practice any non-zero
+  duration drains them. A per-deck row limit was considered and rejected: it
+  would silently drop notifications the user never saw.
