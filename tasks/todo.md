@@ -213,7 +213,7 @@ the intended behaviour; the observable result is correct either way.
 - [x] `git merge upstream` is a no-op
 - [x] Notifications, DND, history and `showHistory` all still work
 - [x] Settings restored to defaults and smoke entries cleared from history
-- [ ] Ready for review; `stacking` is next and inherits the two follow-ups recorded in its spec
+- [x] Reviewed and approved by the user, 2026-08-29, including a live spacing test at cap 5; `stacking` is next and inherits the two follow-ups recorded in its spec
 
 **popup-cap is complete.** A burst no longer runs off the bottom of the screen,
 and it cost nothing from the hook budget.
