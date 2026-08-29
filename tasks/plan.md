@@ -102,7 +102,7 @@ Tasks and checkpoints are in [`tasks/todo.md`](todo.md).
 | Evicting by index while the model mutates | High — removes the wrong notification, or crashes | Select by identity, collect first, remove after. Pure selection is unit tested; the removal loop resolves each identity at call time |
 | Re-entering the model from `countChanged` | High — the `QV4::Object::insertMember` crash upstream documents | The watcher defers through `Qt.callLater`, the same discipline upstream applies to its own mutations |
 | An eviction loop that does not terminate | High — a hung shell | Eviction strictly reduces the count, and the critical exemption returns an empty selection rather than looping. A test asserts selection is empty when every row is critical |
-| Eviction storm at cap 1 under a burst | Medium — file-queue traffic | Bounded work per notification on a serialized queue. Watched during the smoke test, and the timing recorded |
+| Eviction storm at cap 1 under a burst | **Measured, not a concern.** | 20 notifications at cap 1, each triggering an eviction: 4.2 s wall clock of which ~4 s is the script's own sleeps, one toast left, shell responsive throughout |
 | A restored critical is evicted on restart | Medium — it survived a crash only to be dropped | Criticals are exempt everywhere, including the restore path. Verified by restarting with more criticals than the cap |
 | The cap fights `stacking` later | Known, recorded | `slotCount` is the interface and `SPEC-stacking.md` carries both required changes as acceptance criteria |
 

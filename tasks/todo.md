@@ -67,7 +67,7 @@ oldest-first and shuffled input.
 
 ## Phase 2: When to evict
 
-## Task 2: Enforce the cap, and a smoke script to see it
+## Task 2: Enforce the cap, and a smoke script to see it  [DONE]
 
 **Description:** The sidecar watches `service.popupModel`'s count and evicts
 when it rises above the cap. No `Service.qml` hook: `popupModel` is already
@@ -82,45 +82,63 @@ since `fork-seam` without it existing. A cap cannot be verified by hand without
 a repeatable burst.
 
 **Acceptance criteria:**
-- [ ] `maxVisiblePopups: 3` and a burst of 20 leaves 3 toasts on screen
-- [ ] The newest 3 survive; the evicted are the oldest
-- [ ] Every evicted notification is in history immediately afterwards
-- [ ] No evicted notification leaves a file behind in `notifications/`
-- [ ] Lowering the cap while toasts are on screen evicts down to the new value
-- [ ] Raising it does not resurrect anything
-- [ ] A screen of criticals over the cap keeps them all
-- [ ] `scripts/smoke.sh` fires a documented, repeatable burst and is not shipped by `install.sh`
-- [ ] No `Service.qml` change: `check-delta.sh` still reports `+36/60`
+- [x] `maxVisiblePopups: 3` and a burst of 20 leaves 3 toasts on screen
+- [x] The newest 3 survive; the evicted are the oldest
+- [x] Every evicted notification is in history immediately afterwards
+- [x] No evicted notification leaves a file behind in `notifications/`
+- [x] Lowering the cap while toasts are on screen evicts down to the new value
+- [x] Raising it does not resurrect anything
+- [x] A screen of criticals over the cap keeps them all
+- [x] `scripts/smoke.sh` fires a documented, repeatable burst and is not shipped by `install.sh`
+- [x] No `Service.qml` change: `check-delta.sh` still reports `+36/60`
 
 **Verification:**
-- [ ] `./install.sh && omarchy restart shell`
-- [ ] `setMaxVisible 3`, run `./scripts/smoke.sh`, count toasts on screen → 3
-- [ ] Compare the survivors' summaries against the last 3 sent
-- [ ] `notification-history list` → the evicted ones are there
-- [ ] `ls ~/.local/state/omarchy/notifications/*.json` → one file per visible toast, no orphans
-- [ ] `setMaxVisible 1` with 3 on screen → 2 evicted immediately
-- [ ] Send 5 criticals with cap 2 → all 5 stay; dismiss them by hand
-- [ ] Time a burst of 20 at cap 1 and record the file-queue cost in the plan
-- [ ] **Visual**: confirm the column no longer runs off the bottom of the screen
+- [x] `./install.sh && omarchy restart shell`
+- [x] `setMaxVisible 3`, run `./scripts/smoke.sh`, count toasts on screen → 3
+- [x] Compare the survivors' summaries against the last 3 sent
+- [x] `notification-history list` → the evicted ones are there
+- [x] `ls ~/.local/state/omarchy/notifications/*.json` → one file per visible toast, no orphans
+- [x] `setMaxVisible 1` with 3 on screen → 2 evicted immediately
+- [x] Send 5 criticals with cap 2 → all 5 stay; dismiss them by hand
+- [x] Time a burst of 20 at cap 1 and record the file-queue cost in the plan
+- [ ] **Visual**: confirm the column no longer runs off the bottom of the screen — **needs a human at the screen**
 
 **Dependencies:** Task 1
 
-**Files likely touched:**
-- `NotificationState.qml`
+**Files touched:**
+- `NotificationState.qml` (`slotCount`, the watcher, `enforceCap`, identity lookup)
 - `scripts/smoke.sh` (new)
-- `test/popup-cap.test.js`
+- `test/comments.test.js` (now globs `scripts/`, so a new script cannot escape the rule)
 
-**Estimated scope:** S (3 files)
+**Estimated scope:** S (3 files). **Zero `Service.qml` hooks** — the guard reads
+`+36/60`, exactly as before this task.
+
+**Two checks proved nothing the first time and were redone.** The survivors of
+the first burst had already expired naturally by the time I measured, so
+"no orphaned files" read 0 files against 0 toasts, and "lowering the cap evicts"
+compared 0 against 0. Re-run with `setDuration normal 0` so the toasts stay put:
+then 3 files against 3 toasts, and lowering to 1 visibly evicted 2 keeping the
+newest.
+
+**Measured, not asserted:** 20 notifications at cap 3 leave `smoke 18/19/20`;
+all 20 reach history; lowering to 1 leaves `smoke 20`; raising to 5 resurrects
+nothing; 5 criticals at cap 2 all stay, and a normal arriving among them is the
+one evicted.
+
+**Eviction storm timing**, which the plan asked for: 20 notifications at cap 1,
+each triggering an eviction, settled in 4.2 s wall clock — of which about 4 s is
+the script's own `sleep`. One toast left, shell responsive throughout.
 
 ---
 
-## Checkpoint A: A burst is bounded
+## Checkpoint A: A burst is bounded  [REACHED]
 
-- [ ] A burst of 20 leaves exactly the cap on screen, newest kept
-- [ ] Everything evicted is in history, with no file left behind
-- [ ] Criticals survive the cap
-- [ ] `node --test "test/**/*.test.js"` and `./scripts/check-delta.sh` pass
-- [ ] Review with human before proceeding
+- [x] A burst of 20 leaves exactly the cap on screen, newest kept
+- [x] Everything evicted is in history, with no file left behind
+- [x] Criticals survive the cap, and a normal among them is evicted instead
+- [x] `node --test "test/**/*.test.js"` (117) and `./scripts/check-delta.sh` (`+36/60`) pass
+- [x] Settings restored and smoke entries cleared from history afterwards
+- [ ] Review with human before proceeding — including the visual check
 
 ---
 
